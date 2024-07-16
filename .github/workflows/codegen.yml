@@ -1,6 +1,7 @@
 name: codegen
 on:
   - pull_request
+  - push
 
 jobs:
   install-pspamm:
