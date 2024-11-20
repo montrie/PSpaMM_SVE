@@ -39,6 +39,10 @@ class InlinePrinter(Visitor):
         self.output.append(line)
 
     def visitFma(self, stmt: FmaStmt):
+# TODO: floating-point outer product and accumulate:
+# FMOPA <ZAda>.D, <Pn>/M, <Pm>/M, <Zn>.D, <Zm>.D
+# if we have to reuse fma: put 2 predicates into stmt.pred, add_dest is ZA tile, bcast_src is B_reg, mult_src is A_reg
+
         b = stmt.bcast_src.ugly
         m = stmt.mult_src.ugly
         a = stmt.add_dest.ugly
@@ -57,6 +61,8 @@ class InlinePrinter(Visitor):
             self.addLine(s1, "move {} into {}".format(b, a))
             b = a
 
+# TODO: alpha*A*B will remain as an fmul instruction
+#       beta*C: there seems to be no multiplication
         p = self.p_string(stmt.pred)
         s = "fmul {}, {}{}, {}".format(a, p, b, m)
         self.addLine(s, stmt.comment)
@@ -144,15 +150,22 @@ class InlinePrinter(Visitor):
             src_str = stmt.src.ugly if not stmt.is_B else stmt.src.ugly_no_vl_scaling
 
         p = self.p_string(stmt.pred)
+        # TODO: this can be done better
         prec = "d" if stmt.dest.ugly_precision == "d" else "w"
+        is_B = "r" if stmt.is_B else ""
 
         if stmt.typ == AsmType.i64:
             s = "add {}, {}, {}".format(stmt.dest.ugly, stmt.dest.ugly, src_str)
+        elif stmt.typ == AsmType.ZA:
+# TODO: stmt.dest is prob. ZA tile -> we can only load a slice so do we loop over the X tile slices here?
+#       we don't have access to the size of C here so the looping (+ adjustment of access base reg) should happen in generator.py
+# TODO: maybe we can assign C_reg the X amount of different ZA slices that exist
+            s = "ld1{} {}, {}, {}".format(prec, stmt.dest.ugly, p, src_str)
         elif stmt.typ == AsmType.f64x8 and stmt.aligned:
-            if stmt.is_B:
-                s = "ld1r{} {}, {}{}".format(prec, stmt.dest.ugly, p, src_str)
-            else:
-                s = "ld1{} {}, {}{}".format(prec, stmt.dest.ugly, p, src_str)
+#            if stmt.is_B:
+#                s = "ld1r{} {}, {}{}".format(prec, stmt.dest.ugly, p, src_str)
+#            else:
+            s = "ld1{}{} {}, {}{}".format(is_B, prec, stmt.dest.ugly, p, src_str)
         else:
             raise NotImplementedError()
         self.addLine(s, stmt.comment)
@@ -172,7 +185,10 @@ class InlinePrinter(Visitor):
         prec = "d" if stmt.src.ugly_precision == "d" else "w"
 
         if stmt.typ == AsmType.i64:
-            s = "add {}, {}, {}".format(stmt.dest.ugly, stmt.dest.ugly, src_str)
+            s = "add {}, {}, {}".format(stmt.dest.ugly, stmt.dest.ugly, dest_str)
+        elif stmt.typ == AsmType.ZA:
+# TODO: same concerns as for the load instruction
+            s = "st1{} {}, {}, {}".format(prec, stmt.src.ugly, p, dest_str)
         elif stmt.typ == AsmType.f64x8 and stmt.aligned:
             s = "st1{} {}, {}{}".format(prec, stmt.src.ugly, p, dest_str)
         else:

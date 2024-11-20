@@ -16,11 +16,11 @@ void {funcName} (const {real_type}* A, const {real_type}* B, {real_type}* C, con
     "ldr x2, %2\\n\\t"
     "ldr x3, %3\\n\\t"
     "ldr x4, %4\\n\\t"
-    "smstart\\n\\t"
+    "smstart sm\\n\\t"
     {prefetching_mov}
     {init_registers}
     {body_text}
-    "smstop\\n\\t"
+    "smstop sm\\n\\t"
 
     : : "m"(A), "m"(B), "m"(C), "m"(alpha), "m"(beta){prefetching_decl}: "memory",{clobbered});
     
@@ -83,11 +83,13 @@ void {funcName} (const {real_type}* A, const {real_type}* B, {real_type}* C, con
         prec = "d" if self.get_precision() == Precision.DOUBLE else "s"
 
         # use max(vm, 1) in case bm < v_size, otherwise we get no A_regs/C_regs
+        # TODO: adjust the register creation according to scripts/max_arm_sme.py
         A_regs = Matrix([[z(max(vm, 1) * c + r , prec) for c in range(bk)] for r in range(max(vm, 1))])
         B_regs = Matrix([[z(max(vm, 1) * bk + bn * r + c, prec) for c in range(bn)] for r in range(bk)])
-        C_regs = Matrix([[z(32 - max(vm, 1) * bn + max(vm, 1) * c + r, prec) for c in range(bn)] for r in range(max(vm, 1))])
+# TODO:  C_regs not needed anymore because we use the ZA register
+#        C_regs = Matrix([[z(32 - max(vm, 1) * bn + max(vm, 1) * c + r, prec) for c in range(bn)] for r in range(max(vm, 1))])
 
-        # TODO: needs to be the first entry in B_regs
+        # TODO: needs to be the first entry in B_regs, I think we can get away again with not statically assigning an alpha/beta register
         b_reg = max(vm, 1) * bk
         alpha_reg = [z(b_reg, prec), z(b_reg, prec)]
         beta_reg = [z(b_reg + 1, prec), z(b_reg + 1, prec)]
@@ -137,8 +139,8 @@ void {funcName} (const {real_type}* A, const {real_type}* B, {real_type}* C, con
         bnmod = bn % v_size
 
         eol = "\\n\\t"  # define the "end of line" sequence for easy assembly
-        p_suffix = "d" if v_size == 2 * self.v_len else "s"  # determine whether predicate suffix is '.d' or '.s
-        gen_reg = "x" if v_size == 2 * self.v_len else "w"   # determine if 'dup' registers are 64 bit or 32 bit
+        p_suffix = "d" if self.precision == Precision.DOUBLE else "s"  # determine whether predicate suffix is '.d' or '.s
+        gen_reg = "x" if self.precision == Precision.DOUBLE else "w"   # determine if 'dup' registers are 64 bit or 32 bit
         overhead_counter = 6
 
         comment = "//p7 denotes the 'all-true' predicate and, if given, p0 denotes the 'bm % v_size' predicate\n\t"
@@ -147,8 +149,8 @@ void {funcName} (const {real_type}* A, const {real_type}* B, {real_type}* C, con
         # https://developer.arm.com/documentation/ddi0596/2020-12/Shared-Pseudocode/AArch64-Functions?lang=en#impl-aarch64.DecodePredCount.2
         # 'ptrue' doesnt work for initialising overhead predicate when using single precision -> see valid patterns from above
         # overhead = "\"ptrue p0.{suffix}, #{overhead}{eol}\"\n\t" if bm != 0 else ""    # define overhead predicate
-        overhead_bm = "\"mov {gen_reg}{overhead_counter}, #{overhead}{eol}\"\n\t\"whilelo p0.{suffix}, {gen_reg}zr, {gen_reg}{overhead_counter}{eol}\"\n\t" if bmmod != 0 else ""
-        overhead_bn = "\"mov {gen_reg}{overhead_counter}, #{overhead}{eol}\"\n\t\"whilelo p0.{suffix}, {gen_reg}zr, {gen_reg}{overhead_counter}{eol}\"\n\t" if bnmod != 0 else ""
+	overhead_bm = "\"mov {gen_reg}{overhead_counter}, #{overhead}{eol}\"\n\t\"whilelo p0.{suffix}, {gen_reg}zr, {gen_reg}{overhead_counter}{eol}\"\n\t" if bmmod != 0 else ""
+	overhead_bn = "\"mov {gen_reg}{overhead_counter}, #{overhead}{eol}\"\n\t\"whilelo p1.{suffix}, {gen_reg}zr, {gen_reg}{overhead_counter}{eol}\"\n\t" if bnmod != 0 else ""
         overhead = overhead_bm + overhead_bn          # define partial true predicates in M and N dimension
         all_true = "\"ptrue p7.{suffix}, #31{eol}\""  # define all true predicate
         init_registers = (comment + overhead + all_true).format(suffix=p_suffix,
@@ -197,6 +199,7 @@ void {funcName} (const {real_type}* A, const {real_type}* B, {real_type}* C, con
 
         # DONE if another CPU implements SVE at VL != 64 bytes, rewrite mul_vl (maybe do this dynamically)
         mul_vl = 16 * self.v_len   # e.g. A64FX has VL of 64 bytes in memory (thus, use v_len==4)
+        # TODO: the allowed offset when loading/storing the ZA tile is 15, but the ld1d etc. instructions behave differently here
         max_mem_ins_mult = 7  # A64FX allows a maximum positive offset of 7 in memory instructions, e.g. ld1d z1.d, p0/z, [x0, 7, MUL VL] (TODO: tune, if ever different)
         max_offset = mul_vl * max_mem_ins_mult  # ld1d/st1d instruction encodes the immediate offset using 4 bits, multiplies it with MUL VL
 
