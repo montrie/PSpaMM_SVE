@@ -1,6 +1,6 @@
 from pspamm.cursors import *
 
-from pspamm.codegen.architectures.arm_sve.operands import *
+from pspamm.codegen.architectures.arm_sme.operands import *
 from pspamm.codegen.ast import *
 from pspamm.codegen.sugar import *
 from pspamm.codegen.generator import *
@@ -16,11 +16,11 @@ void {funcName} (const {real_type}* A, const {real_type}* B, {real_type}* C, con
     "ldr x2, %2\\n\\t"
     "ldr x3, %3\\n\\t"
     "ldr x4, %4\\n\\t"
-    "smstart sm\\n\\t"
+    "smstart\\n\\t"
     {prefetching_mov}
     {init_registers}
     {body_text}
-    "smstop sm\\n\\t"
+    "smstop\\n\\t"
 
     : : "m"(A), "m"(B), "m"(C), "m"(alpha), "m"(beta){prefetching_decl}: "memory",{clobbered});
     

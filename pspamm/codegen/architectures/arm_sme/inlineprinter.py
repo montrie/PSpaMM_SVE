@@ -47,6 +47,8 @@ class InlinePrinter(Visitor):
         m = stmt.mult_src.ugly
         a = stmt.add_dest.ugly
         p = self.p_string(stmt.pred)
+
+        if 
         s = "fmla {}, {}{}, {}".format(a, p, m, b)
 
         self.addLine(s, stmt.comment)

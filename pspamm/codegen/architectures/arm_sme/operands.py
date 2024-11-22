@@ -1,7 +1,7 @@
 from pspamm.codegen.operands import *
 
 
-AsmType = Enum('AsmType', [asmtype.name for asmtype in AsmType] + ['ZA']
+AsmType = Enum('AsmType', [asmtype.name for asmtype in AsmType] + ['ZA'] + ['ZA8', 'ZA16', 'ZA32', 'ZA64', 'ZA128']
 #                          ['ZAf64', 'ZAf32'])
 
 
@@ -87,12 +87,12 @@ class Register_ZA(Register):
 
     @property
     def ugly(self):
-        # access the tile-th slice of the ZA register
+        # access the tile-th horizontal slice of the ZA register
         return f"ZA{self.tile}H.{self.ugly_precision}[{self.base}, {self.offset}, LSL #{self.ugly_lsl_shift}]"
 
     @property
     def ugly_precision(self):
-        return self.value.split(".")[1]
+        return self.value[-1]#.split(".")[1]
 
     @property
     def ugly_lsl_shift(self):

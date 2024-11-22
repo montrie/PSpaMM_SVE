@@ -78,11 +78,11 @@ def main():
     c = [[32 - vm * bn + vm * c + r for c in range(bn)] for r in range(vm)]
 
 #    for bm in 
-#    print(f"a1={a1}")
-#    print(f"bm={bm}, bn={bn}")
-#    print(f"a={a}")
-#    print(f"b={b}")
-#    print(f"c={c}")
+    print(f"a1={a1}")
+    print(f"bm={bm}, bn={bn}")
+    print(f"a={a}")
+    print(f"b={b}")
+    print(f"c={c}")
 
     bm, bn, bk = get_blocksize(m, n, k, v_size)
     vm = -(bm // -v_size)
@@ -95,6 +95,19 @@ def main():
     print(f"a={a}")
     print(f"b={b}")
 #    print(f"c={c}")
+
+    bm, bn, bk = get_blocksize(m, n, k, v_size)
+    vm = -(bm // -v_size)
+    a = [[vm * c + r for c in range(vm)] for r in range(bk)]
+    b = [[vm * bk + bn * r + c for c in range(bn)] for r in range(bk)]
+#    c = [[32 - vm * bn + vm * c + r for c in range(bn)] for r in range(vm)]
+
+    print(f"Transposed A, MAYBE transposed B")
+    print(f"bm={bm}, bn={bn}, bk={bk}")
+    print(f"a={a}")
+    print(f"b={b}")
+#    print(f"c={c}")
+
 
 
 
