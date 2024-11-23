@@ -89,6 +89,8 @@ class FmaStmt(AsmStmt):
     add_dest = None
     bcast = None
     pred = None
+    # used in arm_sme
+    pred2 = None
 
     def accept(self, visitor: "Visitor"):
         visitor.visitFma(self)

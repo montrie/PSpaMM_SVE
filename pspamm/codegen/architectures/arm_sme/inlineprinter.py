@@ -190,6 +190,8 @@ class InlinePrinter(Visitor):
             s = "add {}, {}, {}".format(stmt.dest.ugly, stmt.dest.ugly, dest_str)
         elif stmt.typ == AsmType.ZA:
 # TODO: same concerns as for the load instruction
+# TODO: there is no store instruction that directly stores rows/columns of ZA to memory, we need to MOVA the ZA slice
+#       into a Z register and then store that register
             s = "st1{} {}, {}, {}".format(prec, stmt.src.ugly, p, dest_str)
         elif stmt.typ == AsmType.f64x8 and stmt.aligned:
             s = "st1{} {}, {}{}".format(prec, stmt.src.ugly, p, dest_str)

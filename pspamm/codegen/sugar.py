@@ -19,7 +19,7 @@ def label(name: str):
     stmt.label = pspamm.architecture.operands.l(name)
     return stmt
 
-def fma(bcast_src: Register, mult_src: Register, add_dest: Register, comment: str = None, bcast: bool = True, pred: Register = None):
+def fma(bcast_src: Register, mult_src: Register, add_dest: Register, comment: str = None, bcast: bool = True, pred: Register = None, pred2: Register = None):
     stmt = FmaStmt()
     stmt.bcast_src = bcast_src
     stmt.mult_src = mult_src
@@ -28,6 +28,8 @@ def fma(bcast_src: Register, mult_src: Register, add_dest: Register, comment: st
     stmt.bcast = bcast
     # used in arm_sve:
     stmt.pred = pred
+    # used in arm_sme:
+    stmt.pred2 = pred2
     return stmt
 
 def mul(src: Register, mult_src: Register, dest: Register, comment: str = None, pred: Register = None):
