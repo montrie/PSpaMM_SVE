@@ -1,8 +1,7 @@
 from pspamm.codegen.operands import *
 
 
-AsmType = Enum('AsmType', [asmtype.name for asmtype in AsmType] + ['ZA'] + ['ZA8', 'ZA16', 'ZA32', 'ZA64', 'ZA128']
-#                          ['ZAf64', 'ZAf32'])
+AsmType = Enum('AsmType', [asmtype.name for asmtype in AsmType] + ['za8', 'za16', 'za32', 'za64', 'za128']
 
 
 class Operand_ARM:
@@ -88,7 +87,11 @@ class Register_ZA(Register):
     @property
     def ugly(self):
         # access the tile-th horizontal slice of the ZA register
-        return f"ZA{self.tile}H.{self.ugly_precision}[{self.base}, {self.offset}, LSL #{self.ugly_lsl_shift}]"
+        return f"ZA{self.tile}H.{self.ugly_precision}[{self.base}, #{self.offset}]"
+
+    @property
+    def ugly_offset(self):
+        return self.offset
 
     @property
     def ugly_precision(self):
@@ -106,7 +109,7 @@ class Register_ZA(Register):
 r = lambda n: Register_ARM(AsmType.i64, "x" + str(n))
 xzr = Register_ARM(AsmType.i64, "xzr")
 z = lambda n, prec: Register_ARM(AsmType.f64x8, "z" + str(n) + "." + prec)
-ZA = lambda prec, tile, base, offset: Register_ZA(AsmType.ZA, f"ZA.{prec}", tile, base, offset)  # TODO: info of form (base, offset)
+za = lambda prec, tile, base, offset: Register_ZA(AsmType.za, f"ZA.{prec}", tile, base, offset)  # TODO: info of form (base, offset)
 # TODO: maybe just create a new Register class for the ZA tile to make this easier
 
 
