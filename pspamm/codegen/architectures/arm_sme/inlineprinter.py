@@ -4,6 +4,7 @@ from pspamm.codegen.visitor import Visitor
 from pspamm.codegen.operands import *
 from pspamm.codegen.precision import *
 
+# TODO: p_string should not end in ', ', that should be part of the final asm string a visit function assembles
 
 class InlinePrinter(Visitor):
     show_comments = True
@@ -47,9 +48,9 @@ class InlinePrinter(Visitor):
         m = stmt.mult_src.ugly
         a = stmt.add_dest.ugly
         p = self.p_string(stmt.pred)
+        p2 = self.p_string(stmt.pred2)
 
-        if 
-        s = "fmla {}, {}{}, {}".format(a, p, m, b)
+        s = "fmopa {}, {}{}{}, {}".format(a, p, p2, m, b)
 
         self.addLine(s, stmt.comment)
 
@@ -64,7 +65,7 @@ class InlinePrinter(Visitor):
             b = a
 
 # TODO: alpha*A*B will remain as an fmul instruction
-#       beta*C: there seems to be no multiplication
+#       beta*C: there seems to be no multiplication of ZA slices, we need to mov/ld a C vector into an SVE register, then multiply it with beta and move the result back into ZA
         p = self.p_string(stmt.pred)
         s = "fmul {}, {}{}, {}".format(a, p, b, m)
         self.addLine(s, stmt.comment)
@@ -144,6 +145,8 @@ class InlinePrinter(Visitor):
     def visitLoad(self, stmt: LoadStmt):
         if isinstance(stmt.src, Label):
             src_str = "#" + stmt.src.ugly
+# TODO: ugly_offset and scalar_offs might be helpful to include the
+
         elif stmt.src.ugly_offset != "0" and stmt.scalar_offs:
             self.addLine("mov {}, #{}".format(stmt.add_reg.ugly, stmt.src.ugly_offset), "move immediate offset into {}".format(stmt.add_reg.ugly))
             # TODO: adapt ugly_lsl_shift to account for possible single precision instead of double precision
@@ -162,7 +165,14 @@ class InlinePrinter(Visitor):
 # TODO: stmt.dest is prob. ZA tile -> we can only load a slice so do we loop over the X tile slices here?
 #       we don't have access to the size of C here so the looping (+ adjustment of access base reg) should happen in generator.py
 # TODO: maybe we can assign C_reg the X amount of different ZA slices that exist
-            s = "ld1{} {}, {}, {}".format(prec, stmt.dest.ugly, p, src_str)
+# TODO: do we still load only one element of B and broadcast it across a whole SVE vector?
+# TODO: maybe use str if dest.ugly_offset and za.ugly_offset are equal?
+            if stmt.src.ugly_offset == stmt.za.ugly_offset:
+                s = "ldr {}, {}".format(stmt.za.ugly, src_str)
+            else: 
+                s = "ld1{}{} {}, {}{}".format(is_B, prec, stmt.dest.ugly, p, src_str)
+                self.addLine(s, "load C vector to be moved into za")
+                s = "mov {}, {}, {}".format(stmt.za.ugly, p, stmt.dest.ugly)
         elif stmt.typ == AsmType.f64x8 and stmt.aligned:
 #            if stmt.is_B:
 #                s = "ld1r{} {}, {}{}".format(prec, stmt.dest.ugly, p, src_str)
@@ -190,9 +200,16 @@ class InlinePrinter(Visitor):
             s = "add {}, {}, {}".format(stmt.dest.ugly, stmt.dest.ugly, dest_str)
         elif stmt.typ == AsmType.ZA:
 # TODO: same concerns as for the load instruction
-# TODO: there is no store instruction that directly stores rows/columns of ZA to memory, we need to MOVA the ZA slice
+# TODO: there IS a store instruction that directly stores a row of ZA to memory, we DON'T need to MOVA the ZA slice
 #       into a Z register and then store that register
-            s = "st1{} {}, {}, {}".format(prec, stmt.src.ugly, p, dest_str)
+#       src is the SVE register, dest is the memory we store to, za is the ZA tile slice
+# TODO: maybe use str if dest.ugly_offset and za.ugly_offset are equal?
+            if stmt.dest.ugly_offset == stmt.za.ugly_offset:
+                s = "str {}, {}".format(stmt.za.ugly, dest_str)
+            else:
+                s = "mov {}, {}, {}".format(stmt.src.ugly, p, stmt.za.ugly)
+                self.addLine(s, "move tile slice into sve register")
+                s = "st1{} {}, {}{}".format(prec, stmt.src.ugly, p, dest_str)
         elif stmt.typ == AsmType.f64x8 and stmt.aligned:
             s = "st1{} {}, {}{}".format(prec, stmt.src.ugly, p, dest_str)
         else:
