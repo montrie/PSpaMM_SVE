@@ -54,6 +54,8 @@ class LoadStmt(AsmStmt):
     is_B = None
     scalar_offs = False
     add_reg = None
+    # used in arm_sme:
+    za = None
 
     def accept(self, visitor: "Visitor"):
         visitor.visitLoad(self)
@@ -68,6 +70,8 @@ class StoreStmt(AsmStmt):
     pred = None
     scalar_offs = False
     add_reg = None
+    # used in arm_sme:
+    za = None
 
     def accept(self, visitor: "Visitor"):
         visitor.visitStore(self)

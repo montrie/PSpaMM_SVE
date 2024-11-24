@@ -81,7 +81,7 @@ def lea(src: Register, dest: Operand, offset: int, comment:str = None):
     stmt.comment = comment
     return stmt
 
-def ld(src: Union[Operand, int], dest: Operand, vector: bool, comment:str = None, dest2: Operand = None, pred: Register = None, is_B: bool = False, scalar_offs: bool = False, add_reg: AsmType.i64 = None):
+def ld(src: Union[Operand, int], dest: Operand, vector: bool, comment:str = None, dest2: Operand = None, pred: Register = None, is_B: bool = False, scalar_offs: bool = False, add_reg: AsmType.i64 = None, za: AsmType.za = None):
     stmt = LoadStmt()
     stmt.src = src if isinstance(src, Operand) else pspamm.architecture.operands.c(src)
     stmt.dest = dest
@@ -92,6 +92,8 @@ def ld(src: Union[Operand, int], dest: Operand, vector: bool, comment:str = None
     stmt.is_B = is_B
     stmt.scalar_offs = scalar_offs
     stmt.add_reg = add_reg
+    # used in arm_sme:
+    stmt.za = za
 
     if vector:
         stmt.aligned = True
@@ -101,7 +103,7 @@ def ld(src: Union[Operand, int], dest: Operand, vector: bool, comment:str = None
         stmt.typ = AsmType.i64
     return stmt
 
-def st(src: Union[Operand, int], dest: Operand, vector: bool, comment:str = None, src2: Operand = None, pred: Register = None, scalar_offs: bool = False, add_reg: AsmType.i64 = None):
+def st(src: Union[Operand, int], dest: Operand, vector: bool, comment:str = None, src2: Operand = None, pred: Register = None, scalar_offs: bool = False, add_reg: AsmType.i64 = None, za: AsmType.za = None):
     stmt = StoreStmt()
     stmt.src = src if isinstance(src, Operand) else pspamm.architecture.operands.c(src)
     stmt.src2 = src2
@@ -111,6 +113,8 @@ def st(src: Union[Operand, int], dest: Operand, vector: bool, comment:str = None
     stmt.pred = pred
     stmt.scalar_offs = scalar_offs
     stmt.add_reg = add_reg
+    # used in arm_sme:
+    stmt.za = za
 
     if vector:
         stmt.aligned = True
