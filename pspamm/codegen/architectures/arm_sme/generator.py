@@ -69,6 +69,11 @@ void {funcName} (const {real_type}* A, const {real_type}* B, {real_type}* C, con
             s = "p{}/{}".format(num_trues - 1, suffix)
         return Register_ARM(AsmType.p64x8, s)
 
+    def precision_to_suffix(self):
+        # TODO: what about bytes, halfwords, quadwords?
+        return {Precision.DOUBLE: "d",
+                Precision.SINGLE: "s"}[self.precision]
+
     # taken from https://stackoverflow.com/questions/14822184/is-there-a-ceiling-equivalent-of-operator-in-python
     def ceil_div(self, n, d):
         return -(n // -d)
@@ -117,6 +122,7 @@ void {funcName} (const {real_type}* A, const {real_type}* B, {real_type}* C, con
                              nnz: int
                              ) -> Block:
 
+        # TODO: here we can initialize registers w12 - w15 as needed for ZA access
         asm = block("No register based scaling")
         return asm
 
@@ -139,7 +145,7 @@ void {funcName} (const {real_type}* A, const {real_type}* B, {real_type}* C, con
         bnmod = bn % v_size
 
         eol = "\\n\\t"  # define the "end of line" sequence for easy assembly
-        p_suffix = "d" if self.precision == Precision.DOUBLE else "s"  # determine whether predicate suffix is '.d' or '.s
+        p_suffix = self.precision_to_suffix()  # determine whether predicate suffix is '.d' or '.s
         gen_reg = "x" if self.precision == Precision.DOUBLE else "w"   # determine if 'dup' registers are 64 bit or 32 bit
         overhead_counter = 6
 
@@ -306,6 +312,7 @@ void {funcName} (const {real_type}* A, const {real_type}* B, {real_type}* C, con
         # for ld1rd (double prec): immediate offset is multiple of 8 in range of 0 to 504
         # in both cases: instruction encodes the immediate offset within 6 bits
         max_offs = (2 ** 6 - 1) * multiple
+        # TODO: if we want to interleave loads and fmlas, we can merge the following two loops within the bni loop
         for Vmi in range(Vm):
             # set to all v_size predicates to true, we want to replicate a B element into a whole vector
             p_zeroing = self.pred_n_trues(v_size, v_size, "z")
