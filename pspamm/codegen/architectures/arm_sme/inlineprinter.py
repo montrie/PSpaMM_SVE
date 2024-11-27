@@ -53,7 +53,6 @@ class InlinePrinter(Visitor):
 # floating-point outer product and accumulate:
 # FMOPA <ZAda>.D, <Pn>/M, <Pm>/M, <Zn>.D, <Zm>.D
 # if we have to reuse fma: put 2 predicates into stmt.pred, add_dest is ZA tile, bcast_src is B_reg, mult_src is A_reg
-
         za = stmt.za.ugly
         mult = stmt.mult_src.ugly
         mult2 = stmt.mult_src2.ugly
@@ -148,7 +147,13 @@ class InlinePrinter(Visitor):
         else:
             src_str = stmt.src.ugly
         if stmt.typ == AsmType.f64x8:
-            s = "fmov {}, {}".format(stmt.dest.ugly, src_str)
+            if stmt.pred:
+                # predicate is only used when we move data into/out of the ZA register
+                p = p_string(stmt.pred)
+                # TODO: use MOVA instead?
+                s = "mov {}, {}{}".format(stmt.dest.ugly, p, src_str)
+            else:
+                s = "fmov {}, {}".format(stmt.dest.ugly, src_str)
         else:
             s = "mov {}, {}".format(stmt.dest.ugly, src_str)
         self.addLine(s, stmt.comment)
@@ -182,8 +187,6 @@ class InlinePrinter(Visitor):
                 s = "ldr {}, {}".format(stmt.za.ugly, src_str)
             else: 
                 s = "ld1{}{} {}, {}{}".format(is_B, prec, stmt.dest.ugly, p, src_str)
-                self.addLine(s, "load C vector to be moved into za")
-                s = "mov {}, {}, {}".format(stmt.za.ugly, p, stmt.dest.ugly)
         elif stmt.typ == AsmType.f64x8 and stmt.aligned:
 #            if stmt.is_B:
 #                s = "ld1r{} {}, {}{}".format(prec, stmt.dest.ugly, p, src_str)
@@ -218,8 +221,6 @@ class InlinePrinter(Visitor):
             if stmt.dest.ugly_offset == stmt.za.ugly_offset:
                 s = "str {}, {}".format(stmt.za.ugly, dest_str)
             else:
-                s = "mov {}, {}, {}".format(stmt.src.ugly, p, stmt.za.ugly)
-                self.addLine(s, "move tile slice into sve register")
                 s = "st1{} {}, {}{}".format(prec, stmt.src.ugly, p, dest_str)
         elif stmt.typ == AsmType.f64x8 and stmt.aligned:
             s = "st1{} {}, {}{}".format(prec, stmt.src.ugly, p, dest_str)
