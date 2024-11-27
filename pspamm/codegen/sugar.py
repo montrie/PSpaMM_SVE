@@ -32,6 +32,15 @@ def fma(bcast_src: Register, mult_src: Register, add_dest: Register, comment: st
     stmt.pred2 = pred2
     return stmt
 
+def fmopa(za: Register, mult_src: Register, mult_src2: Register, pred: Register, pred2: Register):
+    stmt = FmopaStmt()
+    stmt.za = za
+    stmt.mult_src = mult_src
+    stmt.mult_src2 = mult_src2
+    stmt.pred = pred
+    stmt.pred2 = pred2
+    return stmt
+
 def mul(src: Register, mult_src: Register, dest: Register, comment: str = None, pred: Register = None):
     stmt = MulStmt()
     stmt.src = src

@@ -40,19 +40,30 @@ class InlinePrinter(Visitor):
         self.output.append(line)
 
     def visitFma(self, stmt: FmaStmt):
-# TODO: floating-point outer product and accumulate:
-# FMOPA <ZAda>.D, <Pn>/M, <Pm>/M, <Zn>.D, <Zm>.D
-# if we have to reuse fma: put 2 predicates into stmt.pred, add_dest is ZA tile, bcast_src is B_reg, mult_src is A_reg
-
         b = stmt.bcast_src.ugly
         m = stmt.mult_src.ugly
         a = stmt.add_dest.ugly
         p = self.p_string(stmt.pred)
-        p2 = self.p_string(stmt.pred2)
 
-        s = "fmopa {}, {}{}{}, {}".format(a, p, p2, m, b)
+        s = "fmla {}, {}{}, {}".format(a, p, m, b)
 
         self.addLine(s, stmt.comment)
+
+    def visitFmopa(self, stmt: FmopaStmt):
+# floating-point outer product and accumulate:
+# FMOPA <ZAda>.D, <Pn>/M, <Pm>/M, <Zn>.D, <Zm>.D
+# if we have to reuse fma: put 2 predicates into stmt.pred, add_dest is ZA tile, bcast_src is B_reg, mult_src is A_reg
+
+        za = stmt.za.ugly
+        mult = stmt.mult_src.ugly
+        mult2 = stmt.mult_src2.ugly
+        p = self.p_string(stmt.pred)
+        p2 = self.p_string(stmt.pred2)
+
+        s = "fmopa {}, {}{}{}, {}".format(za, p, p2, mult, mult2)
+
+        self.addLine(s, stmt.comment)
+
 
     def visitMul(self, stmt: MulStmt):
         b = stmt.src.ugly

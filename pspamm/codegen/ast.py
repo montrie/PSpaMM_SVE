@@ -86,18 +86,25 @@ class PrefetchStmt(AsmStmt):
     def accept(self, visitor: "Visitor"):
         visitor.visitPrefetch(self)
 
-
 class FmaStmt(AsmStmt):
     bcast_src = None
     mult_src = None
     add_dest = None
     bcast = None
     pred = None
-    # used in arm_sme
-    pred2 = None
 
     def accept(self, visitor: "Visitor"):
         visitor.visitFma(self)
+
+class FmopaStmt(AsmStmt):
+    za = None
+    mult_src = None
+    mult_src2 = None
+    pred = None
+    pred2 = None
+
+    def accept(self, visitor: "Visitor"):
+        visitor.visitFmopa(self)
 
 class MulStmt(AsmStmt):
     src = None
