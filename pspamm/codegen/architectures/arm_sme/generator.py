@@ -16,9 +16,9 @@ void {funcName} (const {real_type}* A, const {real_type}* B, {real_type}* C, con
     "ldr x2, %2\\n\\t"
     "ldr x3, %3\\n\\t"
     "ldr x4, %4\\n\\t"
-    "smstart\\n\\t"
     {prefetching_mov}
     {init_registers}
+    "smstart\\n\\t"
     {body_text}
     "smstop\\n\\t"
 
@@ -101,9 +101,9 @@ void {funcName} (const {real_type}* A, const {real_type}* B, {real_type}* C, con
 
         starting_regs = [r(0), r(1), r(2), r(3), r(4), r(5), r(6)]  # r6 is needed for predicate creation, r5 is added in init_prefetching()
 
-        additional_regs = [r(11), l("0.0"), r(10), r(8)]  # r10 used for scaling offsets
+        additional_regs = [r(11), l("0.0"), r(10), r(8), r(12), r(13), r(14), r(15)]  # r10 used for scaling offsets
 
-        loop_reg = r(12)
+        loop_reg = r(7)  # swap loop register from 12 to 7, 12-15 are potentially needed for ZA tile slice access
 
         self.init_registers(bm, bn, v_size)
 
@@ -123,7 +123,10 @@ void {funcName} (const {real_type}* A, const {real_type}* B, {real_type}* C, con
                              ) -> Block:
 
         # TODO: here we can initialize registers w12 - w15 as needed for ZA access
-        asm = block("No register based scaling")
+        asm = block("Register based scaling using w12-w15 to access tile slices")
+        for reg in additional_regs[4:]:
+        for i in range(4):
+            asm.add(i*(self.get_v_size/self.v_len), mov(additional_regs[4+i], True, "base index of tile slice"))
         return asm
 
     def make_b_pointers(self,
