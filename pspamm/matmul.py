@@ -99,15 +99,15 @@ class MatMul:
         if arch == 'skx':
           arch = 'knl'
         
-        # hacky implementation of multi-register length
-        if arch.startswith('arm_sve'):
+        # hacky implementation of multi-register length for SVE and SME
+        if arch.startswith('arm_'):
           if len(arch) == 7:
-            v_len_regs = 4 # compatibility: arm_sve == arm_sve512
+            v_len_regs = 4 # compatibility: arm_sve == arm_sve512, arm_sme == arm_sme512
           else:
             v_len_bits = int(arch[7:])
             assert v_len_bits % 128 == 0 and v_len_bits <= 2048
             v_len_regs = v_len_bits // 128
-          arch = 'arm_sve'
+          arch = arch[:7]
 
         self.arch = arch
         assert precision.lower() in ['s', 'd']
@@ -120,10 +120,12 @@ class MatMul:
 
         self.generator = pspamm.architecture.Generator(self.precision)
 
-        # flag that determines if a matmul kernel uses sve instructions -> needed for sve predicates
-        self.is_sve = arch == "arm_sve"
+        # flags that determine if a matmul kernel uses sve/sme instructions, needed for sve predicates
+        self.is_sve = arch.startswith("arm_")
+        self.is_sme = arch == "arm_sme"
         # define which architectures need to use an explicit broadcast, necessary for alpha/beta values
-        self.use_bcst = arch in ["arm", "arm_sve", "hsw"]
+        # TODO: does arm_sme use explicit broadcasting?
+        self.use_bcst = arch in ["arm", "arm_sve", "arm_sme", "hsw"]
 
         if self.is_sve:
           self.generator.v_len = v_len_regs
@@ -142,6 +144,9 @@ class MatMul:
                 (self.bm, self.bn) = pspamm.scripts.old_arm.getBlocksize(m, n, bk, self.v_size)
             elif arch == 'arm_sve':
                 (self.bm, self.bn) = pspamm.scripts.max_arm_sve.getBlocksize(m, n, bk, self.v_size)
+            elif arch == 'arm_sme':
+                # TODO: adjust for the final SME getBlocksize script
+                (self.bm, self.bn) = pspamm.scripts.max_arm_sme.getBlocksize(m, n, bk, self.v_size)
         else: 
             self.bm = bm
             self.bn = bn
@@ -190,7 +195,7 @@ class MatMul:
         #    prefetchReg = None
         prefetchReg = self.generator.init_prefetching(self.prefetching)
 
-        # if matrices are always padded to multiple of v_size, we can remove the if-part and execute the assert for SVE too
+        # if matrices are always padded to multiple of v_size, we can remove the if-part and execute the assert for SVE/SME too
         if not self.is_sve:
             assert(self.m % self.v_size == 0)
 
@@ -243,7 +248,14 @@ class MatMul:
                     for ic in range(regs.shape[1]):
                         for ir in range(regs.shape[0]):
                             pred_m = None if not self.is_sve else self.generator.pred_n_trues(self.bm - ir * self.v_size, self.v_size, "m")
-                            asm.add(mul(regs[ir,ic], self.beta_reg[1], regs[ir,ic], "C = beta * C", pred=pred_m))
+                            # TODO: is there a better way to handle SME not allowing multiplication of ZA rows with vector registers?
+                            if self.is_sme:
+                                #TODO: add MOV of ZA row to vector register, use A_regs as intermediate registers to perform multiplication, there should be enough of them
+                                asm.add(mov(regs[ir,ic], self.A_regs[ir,ic], True, "move ZA row to vector register"))
+                                asm.add(mul(self.A_regs[ir,ic], self.beta_reg[1], self.A_regs[ir,ic], "C = beta * C", pred=pred_m))
+                                asm.add(mov(self.A_regs[ir,ic], regs[ir,ic], True, "move vector register to ZA row"))
+                            else:
+                                asm.add(mul(regs[ir,ic], self.beta_reg[1], regs[ir,ic], "C = beta * C", pred=pred_m))                    
             else:
                 asm.add(self.generator.make_zero_block(regs, self.additional_regs))
 
@@ -268,15 +280,16 @@ class MatMul:
                     if self.beta != 0.0:
                         store_block.add(self.generator.move_register_block(self.C, C_ptr, Coords(), A_regs_cut, self.v_size, self.additional_regs, None, False, None, self.ldc * x))
 
-
                     for ir in range(A_regs_cut.shape[0]):
                         for ic in range(A_regs_cut.shape[1]):
                             pred_m = None if not self.is_sve else self.generator.pred_n_trues(self.bm - ir*self.v_size, self.v_size, "m")
+                            #TODO: SME doesnt implement FMUL with ZA register as possible source/destination
                             if self.beta != 0.0 and self.beta != 1.0:
-                                store_block.add(mul(A_regs_cut[ir,ic], self.beta_reg[1], A_regs_cut[ir,ic], pred=pred_m))
+                                store_block.add(mul(A_regs_cut[ir,ic], self.beta_reg[1], A_regs_cut[ir,ic], "beta * C", pred=pred_m))
                             if self.beta == 0.0:
                                 store_block.add(mul(regs[ir, x + ic], self.alpha_reg[1], A_regs_cut[ir, ic], "C = C + alpha * AB", pred=pred_m))
                             else:
+                                #TODO: if we are in arm_sme, we might be able to define the ADD vector as a ZA vector -> needs SME2
                                 store_block.add(fma(regs[ir, x + ic], self.alpha_reg[1], A_regs_cut[ir, ic], "C = C + alpha * AB", False, pred=pred_m))
                     store_block.add(self.generator.move_register_block(self.C, C_ptr, Coords(), A_regs_cut, self.v_size, self.additional_regs, None, True, self.prefetching, self.ldc * x))
                 asm.add(store_block)
