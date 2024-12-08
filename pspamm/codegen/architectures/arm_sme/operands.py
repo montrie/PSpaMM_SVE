@@ -87,15 +87,20 @@ class Register_ZA(Register):
     @property
     def ugly(self):
         # access the tile-th horizontal slice of the ZA register
-        return f"ZA{self.tile}H.{self.ugly_precision}[{self.base}, #{self.offset}]"
+        return "ZA{}H.{}{}".format(self.tile, self.ugly_precision, self.ugly_mem)
+
+    @property
+    def ugly_mem(self):
+        return "[{}, #{}]".format(self.base.ugly, self.offset)
+
 
     @property
     def ugly_offset(self):
-        return self.offset
+        return "".format(self.offset)
 
     @property
     def ugly_precision(self):
-        return self.value[-1]#.split(".")[1]
+        return "".format(self.value[-1]) #.split(".")[1]
 
     @property
     def ugly_lsl_shift(self):
