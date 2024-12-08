@@ -177,21 +177,23 @@ class InlinePrinter(Visitor):
 
         if stmt.typ == AsmType.i64:
             s = "add {}, {}, {}".format(stmt.dest.ugly, stmt.dest.ugly, src_str)
-        elif stmt.typ == AsmType.ZA:
 # TODO: stmt.dest is prob. ZA tile -> we can only load a slice so do we loop over the X tile slices here?
 #       we don't have access to the size of C here so the looping (+ adjustment of access base reg) should happen in generator.py
 # TODO: maybe we can assign C_reg the X amount of different ZA slices that exist
 # TODO: do we still load only one element of B and broadcast it across a whole SVE vector?
 # TODO: maybe use str if dest.ugly_offset and za.ugly_offset are equal?
-            if stmt.src.ugly_offset == stmt.za.ugly_offset:
-                s = "ldr {}, {}".format(stmt.za.ugly, src_str)
-            else: 
-                s = "ld1{}{} {}, {}{}".format(is_B, prec, stmt.dest.ugly, p, src_str)
+
         elif stmt.typ == AsmType.f64x8 and stmt.aligned:
-#            if stmt.is_B:
-#                s = "ld1r{} {}, {}{}".format(prec, stmt.dest.ugly, p, src_str)
-#            else:
-            s = "ld1{}{} {}, {}{}".format(is_B, prec, stmt.dest.ugly, p, src_str)
+            if stmt.za != None:
+                if stmt.src.ugly_offset == stmt.za.ugly_offset:
+                    s = "ldr {}, {}".format(stmt.za.ugly, src_str)
+                else: 
+                    s = "ld1{}{} {}, {}{}".format(is_B, prec, stmt.dest.ugly, p, src_str)
+            else:
+                # if stmt.is_B:
+                #     s = "ld1r{} {}, {}{}".format(prec, stmt.dest.ugly, p, src_str)
+                # else:
+                s = "ld1{}{} {}, {}{}".format(is_B, prec, stmt.dest.ugly, p, src_str)
         else:
             raise NotImplementedError()
         self.addLine(s, stmt.comment)
@@ -212,18 +214,19 @@ class InlinePrinter(Visitor):
 
         if stmt.typ == AsmType.i64:
             s = "add {}, {}, {}".format(stmt.dest.ugly, stmt.dest.ugly, dest_str)
-        elif stmt.typ == AsmType.ZA:
 # TODO: same concerns as for the load instruction
 # TODO: there IS a store instruction that directly stores a row of ZA to memory, we DON'T need to MOVA the ZA slice
 #       into a Z register and then store that register
 #       src is the SVE register, dest is the memory we store to, za is the ZA tile slice
 # TODO: maybe use str if dest.ugly_offset and za.ugly_offset are equal?
-            if stmt.dest.ugly_offset == stmt.za.ugly_offset:
-                s = "str {}, {}".format(stmt.za.ugly, dest_str)
+        elif stmt.typ == AsmType.f64x8 and stmt.aligned:
+            if stmt.za != None:
+                if stmt.dest.ugly_offset == stmt.za.ugly_offset:
+                    s = "str {}, {}".format(stmt.za.ugly, dest_str)
+                else:
+                    s = "st1{} {}, {}{}".format(prec, stmt.src.ugly, p, dest_str)
             else:
                 s = "st1{} {}, {}{}".format(prec, stmt.src.ugly, p, dest_str)
-        elif stmt.typ == AsmType.f64x8 and stmt.aligned:
-            s = "st1{} {}, {}{}".format(prec, stmt.src.ugly, p, dest_str)
         else:
             raise NotImplementedError()
         self.addLine(s, stmt.comment)
