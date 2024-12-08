@@ -57,7 +57,7 @@ def make(kernels, arch):
                 assert (bm % 8 == 0 and (bn + 1) * (bm / 8) <= 32)
             elif arch == "arm":
                 assert (bm % 2 == 0 and (bn + 1) * (bm / 2) + bn <= 32)
-            elif arch.startswith("arm_sve"):
+            elif arch.startswith("arm_"):
                 veclen = int(arch[7:])
                 assert veclen % 128 == 0 and veclen <= 2048
                 reglen = veclen // 128
@@ -105,7 +105,7 @@ def make(kernels, arch):
 
             prec = 's' if isinstance(kern, SparseKernelS) or isinstance(kern, DenseKernelS) else 'd'
 
-            if arch.startswith("arm_sve"):
+            if arch.startswith("arm_"):
                 veclen = int(arch[7:])
                 assert veclen % 128 == 0 and veclen <= 2048
                 reglen = veclen // 128

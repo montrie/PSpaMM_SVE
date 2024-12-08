@@ -90,12 +90,14 @@ void {funcName} (const {real_type}* A, const {real_type}* B, {real_type}* C, con
         vm = self.ceil_div(bm, v_size)              # vm can be 0 if bm < v_size -> makes ceil_div necessary
         assert ((bn + bk) * vm + bn * bk <= 32)     # Needs to fit in SVE z registers
         prec = self.precision_to_suffix() #"d" if self.get_precision() == Precision.DOUBLE else "s"
+        c_mat_range = self.get_v_size
 
         # use max(vm, 1) in case bm < v_size, otherwise we get no A_regs/C_regs
         # TODO: adjust the register creation according to scripts/max_arm_sme.py
         A_regs = Matrix([[z(max(vm, 1) * c + r , prec) for c in range(bk)] for r in range(max(vm, 1))])
         B_regs = Matrix([[z(max(vm, 1) * bk + bn * r + c, prec) for c in range(bn)] for r in range(bk)])
-# TODO:  C_regs not needed anymore because we use the ZA register
+# TODO: inner list should have c running from 0 to num_rows in a tile, n from 0 to number of tiles depending on data type
+        C_regs = Matrix([[za(prec, 0, r(13), c) for c in range(bn)] for n in range(max(vm, 1))])
 #        C_regs = Matrix([[z(32 - max(vm, 1) * bn + max(vm, 1) * c + r, prec) for c in range(bn)] for r in range(max(vm, 1))])
 
         # TODO: needs to be the first entry in B_regs, I think we can get away again with not statically assigning an alpha/beta register
@@ -194,10 +196,13 @@ void {funcName} (const {real_type}* A, const {real_type}* B, {real_type}* C, con
                             is_B: bool = False
                             ) -> Block:
 
+        # TODO: where do we have a call to move_register_block that defines is_B? seems like is_B is never set but always uses its default value?
+
         rows, cols = registers.shape
         action = "Store" if store else "Load"
         asm = block("{} {} register block @ {}".format(action, cursor.name, block_offset))
         prec = self.get_precision()
+        is_za = cursor.name == "C"
 
         # Determine whether we use prefetching and if we are currently operating on C
         do_prefetch = self.prefetch_reg is not None and cursor.name == "C" and store
@@ -223,6 +228,7 @@ void {funcName} (const {real_type}* A, const {real_type}* B, {real_type}* C, con
             for ir in range(rows):
                 if (mask is None) or (mask[ir, ic]):
                     processed = ir * v_size
+                    za_reg = registers[ir, ic] if is_za else None
 # TODO: delete?
 #                    p = self.pred_n_trues(b_row - processed, v_size, False) if not is_B else self.pred_n_trues(v_size, v_size, True)
 #                    p_zeroing = self.pred_n_trues(b_row - processed, v_size, False, "z") if not is_B else self.pred_n_trues(v_size, v_size, True, "z")
@@ -254,8 +260,9 @@ void {funcName} (const {real_type}* A, const {real_type}* B, {real_type}* C, con
                     addr.disp = (addr.disp - prev_disp) // mul_vl
 
                     if store:
+                        # TODO: can we keep this? Then how do we determine whether registers[ir, ic] is a ZA register?
                         asm.add(st(registers[ir, ic], addr, True, comment, pred=p, scalar_offs=False,
-                                   add_reg=additional_regs[2]))
+                                   add_reg=additional_regs[2], za=za_reg))
                         # perform prefetching after a store instruction, similar to KNL case
                         if do_prefetch and self.prefetch_count % threshold == 0:
                             if prev_disp > 0:
@@ -266,8 +273,9 @@ void {funcName} (const {real_type}* A, const {real_type}* B, {real_type}* C, con
                         self.prefetch_count += 1
                     else:
                         # TODO: cursor.name can help to differentiate A and C matrix
+                        # TODO: can we keep this? Then how do we determine whether registers[ir, ic] is a ZA register?
                         asm.add(ld(addr, registers[ir, ic], True, comment, pred=p_zeroing, is_B=is_B, scalar_offs=False,
-                                   add_reg=additional_regs[2]))
+                                   add_reg=additional_regs[2], za=za_reg))
 
                     prev_overhead = int(p.ugly[1]) == 0  # determine if we previously used p0 (overhead predicate)
 
@@ -308,6 +316,8 @@ void {funcName} (const {real_type}* A, const {real_type}* B, {real_type}* C, con
           Instead, the coordinates to the start of the block are passed separately.
           It does not modify any cursor pointers.
         """
+
+        # TODO: where do we have a call to move_register_block that defines is_B? seems like is_B is never set but always uses its default value?
 
         asm = block("Block GEMM microkernel")
         """block_row, block_col, (start)index, pattern_matrix (true/false)"""
@@ -356,15 +366,15 @@ void {funcName} (const {real_type}* A, const {real_type}* B, {real_type}* C, con
             end_index = bm if Vmi + 1 == Vm else Vmi * v_size + v_size  # end_index helps us print the right index ranges
             for bki in range(bk):  # inside this k-block
                 for bni in range(bn):  # inside this n-block
-                    # TODO FINISH
-                    p_merging2 = self.pred_n_trues()
+                    # TODO: similar to p_merging, we probably need to define a Bn = max(self.ceil_div(bn, v_size), 1) and iterate using Bni
+                    p_merging2 = self.pred_n_trues(bn - bni * v_size, v_size. True, "m")
                     to_cell = Coords(down=bki, right=bni)
                     if B.has_nonzero_cell(B_ptr, to_B_block, to_cell):
                         B_cell_addr, B_comment = B.look(B_ptr, to_B_block, to_cell)
                         comment = "C[{}:{},{}] += A[{}:{},{}]*{}".format(Vmi * v_size, end_index, bni, Vmi * v_size,
                                                                          end_index, bki, B_comment)
                         #TODO: fix FMOPA instruction
-                        asm.add(fmopa(B_regs[bki, bni], A_regs[Vmi, bki], C_regs[Vmi, bni], comment=comment, pred=p_merging, pred2=p_merging2))
+                        asm.add(fmopa(C_regs[Vmi, bni], A_regs[Vmi, bki], B_regs[bki, bni], comment=comment, pred=p_merging, pred2=p_merging2))
         return asm
 
     def init_prefetching(self, prefetching):
