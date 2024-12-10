@@ -251,9 +251,9 @@ class MatMul:
                             # TODO: is there a better way to handle SME not allowing multiplication of ZA rows with vector registers?
                             if self.is_sme:
                                 #TODO: add MOV of ZA row to vector register, use A_regs as intermediate registers to perform multiplication, there should be enough of them
-                                asm.add(mov(regs[ir,ic], self.A_regs[ir,ic], True, "move ZA row to vector register"))
+                                asm.add(mov(regs[ir,ic], self.A_regs[ir,ic], True, "move ZA row to vector register", pred=pred_m))
                                 asm.add(mul(self.A_regs[ir,ic], self.beta_reg[1], self.A_regs[ir,ic], "C = beta * C", pred=pred_m))
-                                asm.add(mov(self.A_regs[ir,ic], regs[ir,ic], True, "move vector register to ZA row"))
+                                asm.add(mov(self.A_regs[ir,ic], regs[ir,ic], True, "move vector register to ZA row", pred=pred_m))
                             else:
                                 asm.add(mul(regs[ir,ic], self.beta_reg[1], regs[ir,ic], "C = beta * C", pred=pred_m))                    
             else:
