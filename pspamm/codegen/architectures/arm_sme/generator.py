@@ -94,6 +94,7 @@ void {funcName} (const {real_type}* A, const {real_type}* B, {real_type}* C, con
 
         # use max(vm, 1) in case bm < v_size, otherwise we get no A_regs/C_regs
         # TODO: adjust the register creation according to scripts/max_arm_sme.py
+        # TODO: we prob. need to introduce vn to vectorize the B_reg loads
         A_regs = Matrix([[z(max(vm, 1) * c + r , prec) for c in range(bk)] for r in range(max(vm, 1))])
         B_regs = Matrix([[z(max(vm, 1) * bk + bn * r + c, prec) for c in range(bn)] for r in range(bk)])
 # TODO: inner list should have c running from 0 to num_rows in a tile, n from 0 to number of tiles depending on data type
@@ -260,7 +261,6 @@ void {funcName} (const {real_type}* A, const {real_type}* B, {real_type}* C, con
                     addr.disp = (addr.disp - prev_disp) // mul_vl
 
                     if store:
-                        # TODO: can we keep this? Then how do we determine whether registers[ir, ic] is a ZA register?
                         asm.add(st(registers[ir, ic], addr, True, comment, pred=p, scalar_offs=False,
                                    add_reg=additional_regs[2], za=za_reg))
                         # perform prefetching after a store instruction, similar to KNL case
@@ -273,7 +273,6 @@ void {funcName} (const {real_type}* A, const {real_type}* B, {real_type}* C, con
                         self.prefetch_count += 1
                     else:
                         # TODO: cursor.name can help to differentiate A and C matrix
-                        # TODO: can we keep this? Then how do we determine whether registers[ir, ic] is a ZA register?
                         asm.add(ld(addr, registers[ir, ic], True, comment, pred=p_zeroing, is_B=is_B, scalar_offs=False,
                                    add_reg=additional_regs[2], za=za_reg))
 
@@ -333,23 +332,45 @@ void {funcName} (const {real_type}* A, const {real_type}* B, {real_type}* C, con
         cur11 = -1000
         Vm = max(self.ceil_div(bm, v_size), 1)
 
+        # TODO: maybe this block needs to be changed; similar to 'move_register_block'
+        mul_vl = 16 * self.v_len   # e.g. A64FX has VL of 64 bytes in memory (thus, use v_len==4)
+        # TODO: the allowed offset when loading/storing the ZA tile is 15, but the ld1d etc. instructions behave differently here
+        max_mem_ins_mult = 7  # A64FX allows a maximum positive offset of 7 in memory instructions, e.g. ld1d z1.d, p0/z, [x0, 7, MUL VL] (TODO: tune, if ever different)
+        max_offset = mul_vl * max_mem_ins_mult  # ld1d/st1d instruction encodes the immediate offset using 4 bits, multiplies it with MUL VL
+        prev_disp = 0 
+
         multiple = self.precision.value
         # for ld1rw (single prec): immediate offset is multiple of 4 in range of 0 to 252
         # for ld1rd (double prec): immediate offset is multiple of 8 in range of 0 to 504
         # in both cases: instruction encodes the immediate offset within 6 bits
         max_offs = (2 ** 6 - 1) * multiple
+# TODO: switch 'for bni in range(bn)' to a v_sized version using Vn = self.ceil_div(bn, v_size) -> for Vni in range(Vn):
+        Vn = self.ceil_div(bn, v_size)
+
         # TODO: if we want to interleave loads and fmlas, we can merge the following two loops within the bni loop
         for Vmi in range(Vm):
             # set to all v_size predicates to true, we want to replicate a B element into a whole vector
-            p_zeroing = self.pred_n_trues(v_size, v_size, True, "z")
+#            p_zeroing = self.pred_n_trues(v_size, v_size, True, "z")
             for bki in range(bk):  # inside this k-block
-                for bni in range(bn):  # inside this n-block
-                    to_cell = Coords(down=bki, right=bni)
+                # TODO: bni needs to iterate over bn in steps of v_size
+                for Vni in range(Vn):  # inside this n-block
+                    # TODO: we want to process whole vectors of B elements with length v_size
+                    p_zeroing = self.pred_n_trues(bn - Vni * v_size, v_size, True, "z")
+                    to_cell = Coords(down=bki, right=Vni*v_size)
                     if B.has_nonzero_cell(B_ptr, to_B_block, to_cell):
                         B_cell_addr, B_comment = B.look(B_ptr, to_B_block, to_cell)
-                        if B_regs[bki, bni] not in bs:
+                        if B_regs[bki, Vni] not in bs:
                             # max_offs is the maximum allowed immediate offset when using ld1rd/ld1rw to broadcast a scalar value
-                            if B_cell_addr.disp > max_offs:
+                            # TODO: swtich to processing vectors of B elements
+
+                            # count how many elements we have processed between last step and this step
+                            # TODO: defining prev_disp like this might be wrong, check if this works
+                            prev_disp = cur11
+                            cont_counter = ((B_cell_addr.disp - prev_disp) // mul_vl)
+                            larger_max_offset = cont_counter > max_mem_ins_mult
+
+                            if larger_max_offset:
+                            # if B_cell_addr.disp > max_offs:
                                 if B_cell_addr.disp - cur11 > 0 and B_cell_addr.disp - cur11 <= max_offs:
                                     B_cell_addr.disp = B_cell_addr.disp - cur11
                                 else:
@@ -358,23 +379,24 @@ void {funcName} (const {real_type}* A, const {real_type}* B, {real_type}* C, con
                                     B_cell_addr.disp = 0
 
                                 B_cell_addr.base = additional_regs[0]
-                            asm.add(ld(B_cell_addr, B_regs[bki, bni], True, B_comment, pred=p_zeroing, is_B=is_B))
-                            bs.append(B_regs[bki, bni])
+                            # TODO: set is_B to False instead of is_B in order to use ld1d instead of ld1rd
+                            asm.add(ld(B_cell_addr, B_regs[bki, Vni], True, B_comment, pred=p_zeroing, is_B=False))
+                            bs.append(B_regs[bki, Vni])
 
         for Vmi in range(Vm):
             p_merging = self.pred_n_trues(bm - Vmi * v_size, v_size, False, "m")
             end_index = bm if Vmi + 1 == Vm else Vmi * v_size + v_size  # end_index helps us print the right index ranges
             for bki in range(bk):  # inside this k-block
-                for bni in range(bn):  # inside this n-block
+                # TODO: bni needs to iterate over bn in steps of v_size
+                for Vni in range(Vn):  # inside this n-block
                     # TODO: similar to p_merging, we probably need to define a Bn = max(self.ceil_div(bn, v_size), 1) and iterate using Bni
-                    p_merging2 = self.pred_n_trues(bn - bni * v_size, v_size. True, "m")
-                    to_cell = Coords(down=bki, right=bni)
+                    p_merging2 = self.pred_n_trues(bn - Vni * v_size, v_size, True, "m")
+                    to_cell = Coords(down=bki, right=Vni*v_size)
                     if B.has_nonzero_cell(B_ptr, to_B_block, to_cell):
                         B_cell_addr, B_comment = B.look(B_ptr, to_B_block, to_cell)
-                        comment = "C[{}:{},{}] += A[{}:{},{}]*{}".format(Vmi * v_size, end_index, bni, Vmi * v_size,
+                        comment = "C[{}:{},{}] += A[{}:{},{}]*{}".format(Vmi * v_size, end_index, Vni * v_size, Vmi * v_size,
                                                                          end_index, bki, B_comment)
-                        #TODO: fix FMOPA instruction
-                        asm.add(fmopa(C_regs[Vmi, bni], A_regs[Vmi, bki], B_regs[bki, bni], comment=comment, pred=p_merging, pred2=p_merging2))
+                        asm.add(fmopa(C_regs[Vmi, Vni], A_regs[Vmi, bki], B_regs[bki, Vni], pred=p_merging, pred2=p_merging2, comment=comment))
         return asm
 
     def init_prefetching(self, prefetching):
