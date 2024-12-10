@@ -29,6 +29,9 @@ class Visitor:
     def visitFma(self, stmt: FmaStmt) -> None:
         raise NotImplementedError()
 
+    def visitFmopa(self, stmt: FmopaStmt) -> None:
+        raise NotImplementedError()
+
     def visitMul(self, stmt: MulStmt) -> None:
         raise NotImplementedError()
 
