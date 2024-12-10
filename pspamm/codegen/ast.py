@@ -29,6 +29,8 @@ class MovStmt(AsmStmt):
     dest = None
     typ = None
     aligned = False
+    # used in arm_sme:
+    pred = None
 
     def accept(self, visitor: "Visitor"):
         visitor.visitMov(self)

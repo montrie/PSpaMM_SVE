@@ -32,13 +32,14 @@ def fma(bcast_src: Register, mult_src: Register, add_dest: Register, comment: st
     stmt.pred2 = pred2
     return stmt
 
-def fmopa(za: Register, mult_src: Register, mult_src2: Register, pred: Register, pred2: Register):
+def fmopa(za: Register, mult_src: Register, mult_src2: Register, pred: Register, pred2: Register, comment: str = None):
     stmt = FmopaStmt()
     stmt.za = za
     stmt.mult_src = mult_src
     stmt.mult_src2 = mult_src2
     stmt.pred = pred
     stmt.pred2 = pred2
+    stmt.comment = comment
     return stmt
 
 def mul(src: Register, mult_src: Register, dest: Register, comment: str = None, pred: Register = None):
@@ -69,7 +70,7 @@ def jump(label: str, backwards=True):
     stmt.destination = pspamm.architecture.operands.l(label)
     return stmt
 
-def mov(src: Union[Operand, int], dest: Operand, vector: bool, comment:str = None):
+def mov(src: Union[Operand, int], dest: Operand, vector: bool, comment:str = None, pred: Register = None):
     stmt = MovStmt()
     stmt.src = src if isinstance(src, Operand) else pspamm.architecture.operands.c(src)
     stmt.dest = dest
@@ -80,6 +81,8 @@ def mov(src: Union[Operand, int], dest: Operand, vector: bool, comment:str = Non
     else:
         stmt.aligned = False
         stmt.typ = AsmType.i64
+    # used in arm_sme:
+    stmt.pred = pred
     return stmt
 
 def lea(src: Register, dest: Operand, offset: int, comment:str = None):
