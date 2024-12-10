@@ -1,7 +1,7 @@
 from pspamm.codegen.operands import *
 
 
-AsmType = Enum('AsmType', [asmtype.name for asmtype in AsmType] + ['za8', 'za16', 'za32', 'za64', 'za128']
+AsmType = Enum('AsmType', [asmtype.name for asmtype in AsmType] + ['za8', 'za16', 'za32', 'za64', 'za128'])
 
 
 class Operand_ARM:

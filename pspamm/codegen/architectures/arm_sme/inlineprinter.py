@@ -147,7 +147,7 @@ class InlinePrinter(Visitor):
         else:
             src_str = stmt.src.ugly
         if stmt.typ == AsmType.f64x8:
-            if stmt.pred:
+            if not isinstance(stmt.src, Label) and (stmt.src.typeinfo == AsmType.za or stmt.dest.typeinfo == AsmType.za):
                 # predicate is only used when we move data into/out of the ZA register
                 p = p_string(stmt.pred)
                 # TODO: use MOVA instead?
