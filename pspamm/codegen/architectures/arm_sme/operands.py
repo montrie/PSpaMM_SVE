@@ -96,11 +96,11 @@ class Register_ZA(Register):
 
     @property
     def ugly_offset(self):
-        return "".format(self.offset)
+        return "{}".format(self.offset)
 
     @property
     def ugly_precision(self):
-        return "".format(self.value[-1]) #.split(".")[1]
+        return "{}".format(self.value[-1]) #.split(".")[1]
 
     @property
     def ugly_lsl_shift(self):
