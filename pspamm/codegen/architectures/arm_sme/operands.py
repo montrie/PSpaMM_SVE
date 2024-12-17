@@ -85,14 +85,31 @@ class Register_ZA(Register):
         self.offset = offset
 
     @property
+    def clobbered(self):
+        # TODO: placeholder fix, we might want to make Register_ZA a subclass of Operand 
+        # instead of register, because Register objects are sometimes added to the clobbered list
+        return "memory"
+
+    @property
     def ugly(self):
         # access the tile-th horizontal slice of the ZA register
-        return "ZA{}H.{}{}".format(self.tile, self.ugly_precision, self.ugly_mem)
+        return "za{}h.{}{}".format(self.tile, self.ugly_precision, self.ugly_mem)
+
+    @property
+    def ugly_register(self):
+        return "za{}.{}".format(self.tile, self.ugly_precision)
+
+    @property
+    def ugly_slice(self):
+        return "za{}".format(self.ugly_mem)
 
     @property
     def ugly_mem(self):
-        return "[{}, #{}]".format(self.base.ugly, self.offset)
+        return "[{}, #{}]".format(self.ugly_base, self.offset)
 
+    @property
+    def ugly_base(self):
+        return "{}".format(self.base.ugly).replace("x", "w")
 
     @property
     def ugly_offset(self):
