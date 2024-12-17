@@ -221,7 +221,7 @@ void {funcName} (const {real_type}* A, const {real_type}* B, {real_type}* C, con
         max_offset = mul_vl * max_mem_ins_mult  # ld1d/st1d instruction encodes the immediate offset using 4 bits, multiplies it with MUL VL
 
         prev_disp = 0
-        offs_threshold = self.get_v_size() / self.v_len
+        offs_threshold = self.get_v_size() // self.v_len
         prev_overhead = True
         # this gives us the base register of 'cursor' irrespective of the dummy offset we use
         prev_base = cursor.look(cursor_ptr, block_offset, Coords(down=0, right=0))[0].base
@@ -265,8 +265,9 @@ void {funcName} (const {real_type}* A, const {real_type}* B, {real_type}* C, con
                         # TODO: scalar_offs set to True so we can use x10 as a scalar register offset
                         if cont_counter % offs_threshold == 0:
                             # TODO: might result in float value?
-                            za_row = ir / offs_threshold
-                            asm.add(mov(za_row, za_reg.base, False)) 
+                            za_row = cont_counter / offs_threshold
+                            asm.add(mov(za_row, za_reg.base, False))
+                        za_reg.offset %= offs_threshold
                         asm.add(st(registers[ir, ic], addr, True, comment, pred=p, scalar_offs=True,
                                    add_reg=additional_regs[2], za=za_reg))
                         # perform prefetching after a store instruction, similar to KNL case

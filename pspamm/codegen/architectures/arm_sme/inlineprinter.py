@@ -224,7 +224,7 @@ class InlinePrinter(Visitor):
             if stmt.za != None:
                 if stmt.scalar_offs:
                     if stmt.dest.ugly_offset == "0":
-                        dest_str = dest_str.replace("0", "xzr")
+                        dest_str = "[{}]".format(stmt.dest.ugly_base)
                     s = "st1{} {{{}}}, {}{}".format(prec, stmt.src.ugly, p, dest_str)
                 elif stmt.dest.ugly_offset == stmt.za.ugly_offset:
                     s = "str {}, {}".format(stmt.za.ugly_slice, dest_str)
