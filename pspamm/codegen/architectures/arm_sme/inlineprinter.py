@@ -53,7 +53,7 @@ class InlinePrinter(Visitor):
 # floating-point outer product and accumulate:
 # FMOPA <ZAda>.D, <Pn>/M, <Pm>/M, <Zn>.D, <Zm>.D
 # if we have to reuse fma: put 2 predicates into stmt.pred, add_dest is ZA tile, bcast_src is B_reg, mult_src is A_reg
-        za = stmt.za.ugly
+        za = stmt.za.ugly_register
         mult = stmt.mult_src.ugly
         mult2 = stmt.mult_src2.ugly
         p = self.p_string(stmt.pred)
@@ -153,7 +153,8 @@ class InlinePrinter(Visitor):
                 # TODO: use MOVA instead?
                 s = "mov {}, {}{}".format(stmt.dest.ugly, p, src_str)
             else:
-                s = "fmov {}, {}".format(stmt.dest.ugly, src_str)
+                # s = "fmov {}, {}".format(stmt.dest.ugly, src_str)
+                s = "zero {za}"
         else:
             s = "mov {}, {}".format(stmt.dest.ugly, src_str)
         self.addLine(s, stmt.comment)
@@ -221,8 +222,12 @@ class InlinePrinter(Visitor):
 # TODO: maybe use str if dest.ugly_offset and za.ugly_offset are equal?
         elif stmt.typ == AsmType.f64x8 and stmt.aligned:
             if stmt.za != None:
-                if stmt.dest.ugly_offset == stmt.za.ugly_offset:
-                    s = "str {}, {}".format(stmt.za.ugly, dest_str)
+                if stmt.scalar_offs:
+                    if stmt.dest.ugly_offset == "0":
+                        dest_str = dest_str.replace("0", "xzr")
+                    s = "st1{} {{{}}}, {}{}".format(prec, stmt.src.ugly, p, dest_str)
+                elif stmt.dest.ugly_offset == stmt.za.ugly_offset:
+                    s = "str {}, {}".format(stmt.za.ugly_slice, dest_str)
                 else:
                     s = "st1{} {}, {}{}".format(prec, stmt.src.ugly, p, dest_str)
             else:

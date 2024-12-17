@@ -108,7 +108,7 @@ void {funcName} (const {real_type}* A, const {real_type}* B, {real_type}* C, con
 
         starting_regs = [r(0), r(1), r(2), r(3), r(4), r(5), r(6)]  # r6 is needed for predicate creation, r5 is added in init_prefetching()
 
-        additional_regs = [r(11), l("0.0"), r(10), r(8), r(13)]  # r10 used for scaling offsets, r13 for ZA tile slice access
+        additional_regs = [r(11), l("0.0"), r(10), r(8), r(13), r(14)]  # r10 used for scaling offsets, r13 for ZA tile slice access
 
         loop_reg = r(12)
 
@@ -131,7 +131,7 @@ void {funcName} (const {real_type}* A, const {real_type}* B, {real_type}* C, con
 
         # initialize register w13 which is needed for ZA tile slice access
         asm = block("Register based scaling using w13 as the base register to access ZA tile slices")
-        asm.add(mov(0, additional_regs[-1], False, "base index of ZA tiles"))
+        asm.add(mov(0, additional_regs[4], False, "base index of ZA tiles"))
         return asm
 
     def make_b_pointers(self,
@@ -221,6 +221,7 @@ void {funcName} (const {real_type}* A, const {real_type}* B, {real_type}* C, con
         max_offset = mul_vl * max_mem_ins_mult  # ld1d/st1d instruction encodes the immediate offset using 4 bits, multiplies it with MUL VL
 
         prev_disp = 0
+        offs_threshold = self.get_v_size() / self.v_len
         prev_overhead = True
         # this gives us the base register of 'cursor' irrespective of the dummy offset we use
         prev_base = cursor.look(cursor_ptr, block_offset, Coords(down=0, right=0))[0].base
@@ -230,9 +231,9 @@ void {funcName} (const {real_type}* A, const {real_type}* B, {real_type}* C, con
                 if (mask is None) or (mask[ir, ic]):
                     processed = ir * v_size
                     za_reg = registers[ir, ic] if is_za else None
-# TODO: delete?
-#                    p = self.pred_n_trues(b_row - processed, v_size, False) if not is_B else self.pred_n_trues(v_size, v_size, True)
-#                    p_zeroing = self.pred_n_trues(b_row - processed, v_size, False, "z") if not is_B else self.pred_n_trues(v_size, v_size, True, "z")
+                    # TODO: delete?
+                    # p = self.pred_n_trues(b_row - processed, v_size, False) if not is_B else self.pred_n_trues(v_size, v_size, True)
+                    # p_zeroing = self.pred_n_trues(b_row - processed, v_size, False, "z") if not is_B else self.pred_n_trues(v_size, v_size, True, "z")
 
                     # setup predicate registers
                     num_elems = v_size if is_B else b_row - processed
@@ -261,7 +262,12 @@ void {funcName} (const {real_type}* A, const {real_type}* B, {real_type}* C, con
                     addr.disp = (addr.disp - prev_disp) // mul_vl
 
                     if store:
-                        asm.add(st(registers[ir, ic], addr, True, comment, pred=p, scalar_offs=False,
+                        # TODO: scalar_offs set to True so we can use x10 as a scalar register offset
+                        if cont_counter % offs_threshold == 0:
+                            # TODO: might result in float value?
+                            za_row = ir / offs_threshold
+                            asm.add(mov(za_row, za_reg.base, False)) 
+                        asm.add(st(registers[ir, ic], addr, True, comment, pred=p, scalar_offs=True,
                                    add_reg=additional_regs[2], za=za_reg))
                         # perform prefetching after a store instruction, similar to KNL case
                         if do_prefetch and self.prefetch_count % threshold == 0:
@@ -288,9 +294,11 @@ void {funcName} (const {real_type}* A, const {real_type}* B, {real_type}* C, con
         rows, cols = registers.shape
         asm = block("zero registers")
 
-        for ic in range(cols):
-            for ir in range(rows):
-                asm.add(mov(additional_regs[1], registers[ir, ic], True))
+        # for ic in range(cols):
+        #     for ir in range(rows):
+        #         asm.add(mov(additional_regs[1], registers[ir, ic], True))
+        # TODO: there has to be a better way to zero the ZA reigster -> See inlineprinter
+        asm.add(mov(additional_regs[1], registers[0, 0], True))
 
         return asm
 
@@ -329,7 +337,8 @@ void {funcName} (const {real_type}* A, const {real_type}* B, {real_type}* C, con
 
         # x = 0;
         bs = []
-        cur11 = -1000
+        # cur11 = -1000
+        cur11 = 0
         Vm = max(self.ceil_div(bm, v_size), 1)
 
         # TODO: maybe this block needs to be changed; similar to 'move_register_block'
@@ -337,7 +346,9 @@ void {funcName} (const {real_type}* A, const {real_type}* B, {real_type}* C, con
         # TODO: the allowed offset when loading/storing the ZA tile is 15, but the ld1d etc. instructions behave differently here
         max_mem_ins_mult = 7  # A64FX allows a maximum positive offset of 7 in memory instructions, e.g. ld1d z1.d, p0/z, [x0, 7, MUL VL] (TODO: tune, if ever different)
         max_offset = mul_vl * max_mem_ins_mult  # ld1d/st1d instruction encodes the immediate offset using 4 bits, multiplies it with MUL VL
-        prev_disp = 0 
+        prev_disp = 0
+        prev_base = B.look(B_ptr, to_B_block, Coords(down=0, right=0))[0].base
+        prev_overhead = True
 
         multiple = self.precision.value
         # for ld1rw (single prec): immediate offset is multiple of 4 in range of 0 to 252
@@ -350,13 +361,14 @@ void {funcName} (const {real_type}* A, const {real_type}* B, {real_type}* C, con
         # TODO: if we want to interleave loads and fmlas, we can merge the following two loops within the bni loop
         for Vmi in range(Vm):
             # set to all v_size predicates to true, we want to replicate a B element into a whole vector
-#            p_zeroing = self.pred_n_trues(v_size, v_size, True, "z")
+            # p_zeroing = self.pred_n_trues(v_size, v_size, True, "z")
             for bki in range(bk):  # inside this k-block
                 # TODO: bni needs to iterate over bn in steps of v_size
                 for Vni in range(Vn):  # inside this n-block
                     # TODO: we want to process whole vectors of B elements with length v_size
                     p_zeroing = self.pred_n_trues(bn - Vni * v_size, v_size, True, "z")
                     to_cell = Coords(down=bki, right=Vni*v_size)
+                    # to_cell = Coords(down=bki*v_size, right=Vni)
                     if B.has_nonzero_cell(B_ptr, to_B_block, to_cell):
                         B_cell_addr, B_comment = B.look(B_ptr, to_B_block, to_cell)
                         if B_regs[bki, Vni] not in bs:
@@ -365,20 +377,28 @@ void {funcName} (const {real_type}* A, const {real_type}* B, {real_type}* C, con
 
                             # count how many elements we have processed between last step and this step
                             # TODO: defining prev_disp like this might be wrong, check if this works
-                            prev_disp = cur11
+                            B_cell_addr.disp *= self.get_v_size()
                             cont_counter = ((B_cell_addr.disp - prev_disp) // mul_vl)
                             larger_max_offset = cont_counter > max_mem_ins_mult
 
-                            if larger_max_offset:
+                            if larger_max_offset or (prev_overhead and B_cell_addr.disp > 0):
                             # if B_cell_addr.disp > max_offs:
-                                if B_cell_addr.disp - cur11 > 0 and B_cell_addr.disp - cur11 <= max_offs:
-                                    B_cell_addr.disp = B_cell_addr.disp - cur11
-                                else:
-                                    asm.add(add(B_cell_addr.disp, additional_regs[0], "", B_cell_addr.base))
-                                    cur11 = B_cell_addr.disp
-                                    B_cell_addr.disp = 0
+                                # if B_cell_addr.disp - cur11 > 0 and B_cell_addr.disp - cur11 <= max_offs:
+                                #     B_cell_addr.disp -= cur11
+                                # else:
+                                #     asm.add(add(B_cell_addr.disp, additional_regs[0], "", B_cell_addr.base))
+                                #     cur11 = B_cell_addr.disp
+                                #     prev_disp = cur11
+                                #     B_cell_addr.disp = 0
 
+                                offset_comment = "disp > {}".format(max_offset) if larger_max_offset else "DEFINE COMMENT"
+                                asm.add(add(B_cell_addr.disp, additional_regs[0], offset_comment, B_cell_addr.base))
+                                prev_disp = B_cell_addr.disp
                                 B_cell_addr.base = additional_regs[0]
+                                prev_base = B_cell_addr.base
+                            # else:
+                            B_cell_addr.disp = (B_cell_addr.disp - prev_disp) // mul_vl
+
                             # TODO: set is_B to False instead of is_B in order to use ld1d instead of ld1rd
                             asm.add(ld(B_cell_addr, B_regs[bki, Vni], True, B_comment, pred=p_zeroing, is_B=False))
                             bs.append(B_regs[bki, Vni])
