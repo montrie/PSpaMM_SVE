@@ -265,7 +265,7 @@ void {funcName} (const {real_type}* A, const {real_type}* B, {real_type}* C, con
                         # TODO: scalar_offs set to True so we can use x10 as a scalar register offset
                         if cont_counter % offs_threshold == 0:
                             # TODO: might result in float value?
-                            za_row = cont_counter / offs_threshold
+                            za_row = cont_counter #/ offs_threshold
                             asm.add(mov(za_row, za_reg.base, False))
                         za_reg.offset %= offs_threshold
                         asm.add(st(registers[ir, ic], addr, True, comment, pred=p, scalar_offs=True,
