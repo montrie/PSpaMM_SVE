@@ -16,9 +16,9 @@ void {funcName} (const {real_type}* A, const {real_type}* B, {real_type}* C, con
     "ldr x2, %2\\n\\t"
     "ldr x3, %3\\n\\t"
     "ldr x4, %4\\n\\t"
+    "smstart\\n\\t"
     {prefetching_mov}
     {init_registers}
-    "smstart\\n\\t"
     {body_text}
     "smstop\\n\\t"
 
