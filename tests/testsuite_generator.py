@@ -17,6 +17,8 @@ head_of_testsuite = """#include <fstream>
 #include <cmath>
 #include <stdio.h>
 #include <tuple>
+//TODO: DELETE
+#include <iostream>
 
 
 long long pspamm_num_total_flops = 0;
@@ -31,6 +33,27 @@ void pretty_print(unsigned M, unsigned N, unsigned LDC, T* C) {
     }
     printf("\\n");
   }
+}
+
+template <typename T>
+void check_transposition(T* M, T* Mtrans, int rows, int cols) {
+  for (int i = 0; i < rows; i++) {
+    for (int j = 0; j < cols; j++) {
+      if (Mtrans[j * cols + i] != M[i * rows + j]) {
+        std::cout << "elements for i=" << i << " and j=" << j << " are not equal" << std::endl;
+      }
+    }
+  }
+}
+
+template <typename T>
+void transpose_matrix(T* M, T* Mtrans, int rows, int cols) {
+  for (int i = 0; i < rows; i++) {
+    for (int j = 0; j < cols; j++) {
+      Mtrans[j * cols + i] = M[i * rows + j];
+    }
+  }
+  check_transposition(M, Mtrans, rows, cols);
 }
 
 template <typename T>
@@ -75,7 +98,7 @@ std::tuple<T*, T*, T*, T*, T*> pre(unsigned M, unsigned N, unsigned K, unsigned 
 
   for(int i = 0; i < LDA*LDB; i++)
     A[i] = (T)rand() / RAND_MAX;
-
+  
   for(int i = 0; i < LDB*N; i++)
     if(MTX.compare(""))
       B[i] = 0;

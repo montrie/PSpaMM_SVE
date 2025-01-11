@@ -259,7 +259,7 @@ void {funcName} (const {real_type}* A, const {real_type}* B, {real_type}* C, con
 
                     # adjust addr.disp to a multiple of a SVE vector's length
                     addr.base = prev_base
-                    addr.disp = (addr.disp - prev_disp) // mul_vl
+                    addr.disp = ((addr.disp - prev_disp) // mul_vl) * self.precision.value
 
                     if store:
                         # TODO: scalar_offs set to True so we can use x10 as a scalar register offset
