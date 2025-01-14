@@ -8,7 +8,7 @@ import os.path
 BASEDIR = 'build'
 
 SparseKernel = namedtuple('SparseKernel', 'name m n k lda ldb ldc alpha beta block_sizes mtx delta')
-DenseKernel = namedtuple('DenseKernel', 'name m n k lda ldb ldc alpha beta block_sizes delta')
+enseKernel = namedtuple('DenseKernel', 'name m n k lda ldb ldc alpha beta block_sizes delta')
 
 head_of_testsuite = """#include <fstream>
 #include <sstream>
@@ -50,7 +50,7 @@ template <typename T>
 void transpose_matrix(T* M, T* Mtrans, int rows, int cols) {
   for (int i = 0; i < rows; i++) {
     for (int j = 0; j < cols; j++) {
-      Mtrans[j * cols + i] = M[i * rows + j];
+      Mtrans[i + j * cols] = M[i * rows + j];
     }
   }
   check_transposition(M, Mtrans, rows, cols);
@@ -58,6 +58,7 @@ void transpose_matrix(T* M, T* Mtrans, int rows, int cols) {
 
 template <typename T>
 void gemm_ref(unsigned M, unsigned N, unsigned K, unsigned LDA, unsigned LDB, unsigned LDC, T ALPHA, T BETA, T* A, T* B, T* C) {
+
   for (unsigned col = 0; col < N; ++col) {
     for (unsigned row = 0; row < M; ++row) {
       C[row + col * LDC] = BETA * C[row + col * LDC];
@@ -70,6 +71,20 @@ void gemm_ref(unsigned M, unsigned N, unsigned K, unsigned LDA, unsigned LDB, un
       }
     }
   }
+/*
+  for (unsigned row = 0; row < M; ++row) {
+    for (unsigned col = 0; col < N; ++col) {
+      C[row * LDC + col] = BETA * C[row * LDC + col];
+    }
+  }
+  for (unsigned row = 0; row < M; ++row) {
+    for (unsigned col = 0; col < N; ++col) {
+      for (unsigned k = 0; k < K; ++k) {
+        C[row * LDC + col] += ALPHA * A[row * LDA + k] * B[k * LDB + col];
+      }
+    }
+  }
+*/
 }
 
 template <typename T>
@@ -148,13 +163,13 @@ int post(unsigned M, unsigned N, unsigned K, unsigned LDA, unsigned* LDB, unsign
   if(*LDB == 0)
     *LDB = K;
 
-  printf("GEMM result:\\n");
-  pretty_print(M, N, LDC, C);
+//  printf("GEMM result:\\n");
+//  pretty_print(M, N, LDC, C);
 
   gemm_ref(M, N, K, LDA, *LDB, LDC, *ALPHA, *BETA, A, B, Cref);
 
-  printf("\\nReference:\\n");
-  pretty_print(M, N, LDC, Cref);
+//  printf("\\nReference:\\n");
+//  pretty_print(M, N, LDC, Cref);
     
   for(int i = 0; i < M; i++) {
     for(int j = 0; j < N; j++) {
