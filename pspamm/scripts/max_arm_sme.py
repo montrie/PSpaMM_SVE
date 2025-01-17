@@ -53,8 +53,9 @@ def get_blocksize(m, n, k, v_size=2):
 
 def ARM_condition(bm, bn, bk, v_size):
     # ceiling division
-    vm = -(bm // -v_size)  
-    return (bn + bk) * vm + bn <= 32 and vm >= bk # and bn >= bk
+    vm = -(bm // -v_size)
+    vk = -(bk // -v_size)
+    return (bn + vk) * vm + bn <= 32# and vm >= bk # and bn >= bk
 
 
 def tileable(m, bm):
@@ -66,8 +67,8 @@ def main():
     m = 80
     n = 80
     k = 80
-    bk = 1
     v_size = 8
+    bk = v_size
     bm, bn = getBlocksize(m, n, bk, v_size)
     vm = -(bm // -v_size)
 
@@ -97,9 +98,12 @@ def main():
 #    print(f"c={c}")
 
     bm, bn, bk = get_blocksize(m, n, k, v_size)
+    bm, bn = getBlocksize(80, 80, bk=v_size, v_size=v_size)
+    bk = v_size
     vm = -(bm // -v_size)
-    a = [[vm * c + r for c in range(vm)] for r in range(bk)]
-    b = [[vm * bk + bn * r + c for c in range(bn)] for r in range(bk)]
+    vk = -(bk // -v_size)
+    a = [[vm * c + r for c in range(bk)] for r in range(vm)]
+    b = [[vm * bk + bn * r + c for c in range(bn)] for r in range(vk)]
 #    c = [[32 - vm * bn + vm * c + r for c in range(bn)] for r in range(vm)]
 
     print(f"Transposed A, MAYBE transposed B")

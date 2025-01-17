@@ -147,14 +147,33 @@ class InlinePrinter(Visitor):
         else:
             src_str = stmt.src.ugly
         if stmt.typ == AsmType.f64x8:
-            if not isinstance(stmt.src, Label) and (stmt.src.typeinfo == AsmType.za or stmt.dest.typeinfo == AsmType.za):
+            p = self.p_string(stmt.pred)
+            if not isinstance(stmt.src, Label):
+                # test = stmt.src.typeinfo
+                # test2 = stmt.dest.typeinfo
+                # testtype = AsmType.za
+                # testtype2 = AsmType.za
+                # testresult = testtype == testtype2
+                # print(test == testtype)
+                # print(testresult)
+                # test3 = stmt.src.typeinfo.name
+                # testresult3 = test3.startswith('za')
+                # TODO: why does the line below return false??
+                # if stmt.src.typeinfo == AsmType.za:
+                # if stmt.src.typeinfo.name.startswith('za'):
+                #     # self.addLine("src is za", "DEBUG")
+                #     src_str = stmt.dest.ugly
+                #     dest_str = stmt.dest.ugly
+                # if stmt.dest.typeinfo.name.startswith('za'):
+                #     # self.addLine("dest is za", "DEBUG")
+                #     src_str = stmt.src.ugly
+                #     dest_str = stmt.dest.ugly
                 # predicate is only used when we move data into/out of the ZA register
-                p = p_string(stmt.pred)
                 # TODO: use MOVA instead?
                 s = "mov {}, {}{}".format(stmt.dest.ugly, p, src_str)
             else:
-                # s = "fmov {}, {}".format(stmt.dest.ugly, src_str)
-                s = "zero {za}"
+                s = "fmov {}, {}".format(stmt.dest.ugly, src_str)
+                # s = "zero {za}"
         else:
             s = "mov {}, {}".format(stmt.dest.ugly, src_str)
         self.addLine(s, stmt.comment)

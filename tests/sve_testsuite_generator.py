@@ -63,10 +63,11 @@ def make(kernels, arch):
                 reglen = veclen // 128
                 v_len = 2 * reglen if prec == 'd' else 4 * reglen
                 # this should be the same assertion as in ../scripts/max_arm_sve.py
-                bk = 1
+                bk = v_len# 1
                 # ceiling division
                 vm = -(bm // -v_len)  
-                if not ((bn + bk) * vm + bn * bk <= 32):
+                vk = -(bk // -v_len) # should come out to 1 for bk = 1, meaning no changes for sve
+                if not ((bn + vk) * vm + bn * vk <= 32):
                     print(f'Skipping block size {bm}x{bn} for {arch}')
                     continue
 
@@ -74,10 +75,12 @@ def make(kernels, arch):
 
             additional_args = ['--output_funcname', name, '--output_filename', os.path.join(BASEDIR, arch, name + '.h'),
                                '--output_overwrite']
-            additional_args += ['--bm', str(bm), '--bn', str(bn), '--arch', arch, '--prefetching', 'BL2viaC']
-
+            additional_args += ['--bm', str(bm), '--bn', str(bn), '--bk', str(bk), '--arch', arch, '--prefetching', 'BL2viaC']
+            """
+            subprocess.STDOUT for stderr
+            """
             try:
-                subprocess.check_output(arguments + additional_args, stderr=subprocess.STDOUT)
+                subprocess.check_output(arguments + additional_args, stderr=sys.stderr, env={**os.environ, "DEBUG_SUBPROCESS": "1"})
             except subprocess.CalledProcessError as e:
                 raise RuntimeError("command '{}' return with error (code {}): {}".format(e.cmd, e.returncode, e.output))
 
@@ -93,6 +96,8 @@ def make(kernels, arch):
   float falpha; float fbeta;
   double* prefetch;
   float* fprefetch;
+  double* Atrans;
+  float* fAtrans;
   """)
   
     for kern in kernels:
@@ -111,10 +116,11 @@ def make(kernels, arch):
                 reglen = veclen // 128
                 v_len = 2 * reglen if prec == 'd' else 4 * reglen
                 # this should be the same assertion as in ../scripts/max_arm_sve.py
-                bk = 1
+                bk = v_len #1
                 # ceiling division
                 vm = -( bm // -v_len)
-                if not ((bn + bk) * vm + bn * bk <= 32):
+                vk = -( bk // -v_len) # should come out to 1 for bk = 1, meaning no changes for sve
+                if not ((bn + vk) * vm + bn * vk <= 32):
                     # print(f'Skipping block size {bm}x{bn} for {arch}')
                     continue
 
@@ -130,9 +136,8 @@ def make(kernels, arch):
             f.write("""
   {p}alpha = {alpha}; {p}beta = {beta}; ldb = {ldb};
   {p}pointers = pre<{T}>({m}, {n}, {k}, {lda}, ldb, {ldc}, "{mtx}");
-  {T}* Atrans;
   posix_memalign(reinterpret_cast<void **>(&Atrans), 64, {lda}*{ldb}*sizeof({T}));
-  transpose_matrix(std::get<0>({p}pointers), Atrans, {lda}, {ldb});
+  transpose_matrix(std::get<0>({p}pointers), {p}Atrans, {lda}, {ldb});
   printf("\\n");
   pretty_print({m}, {k}, {lda}, std::get<0>{p}(pointers));
   printf("\\n");
@@ -142,7 +147,7 @@ def make(kernels, arch):
   {name}({A}, std::get<{sparse}>({p}pointers), std::get<3>({p}pointers), {p}alpha, {p}beta, {p}prefetch);
   result = post<{T}>({m}, {n}, {k}, {lda}, &ldb, {ldc}, &{p}alpha, &{p}beta, std::get<0>({p}pointers), std::get<1>({p}pointers), std::get<3>({p}pointers), std::get<4>({p}pointers), {delta:.7f});
   results.push_back(std::make_tuple("{name}", result));
-  free(std::get<0>({p}pointers)); free(std::get<1>({p}pointers)); free(std::get<2>({p}pointers)); free(std::get<3>({p}pointers)); free(std::get<4>({p}pointers)); free({p}prefetch); free(Atrans);
+  free(std::get<0>({p}pointers)); free(std::get<1>({p}pointers)); free(std::get<2>({p}pointers)); free(std::get<3>({p}pointers)); free(std::get<4>({p}pointers)); free({p}prefetch); free({p}Atrans);
 """.format(m=kern.m, n=kern.n, k=kern.k, lda=kern.lda, ldb=kern.ldb, ldc=kern.ldc, alpha=kern.alpha, beta=kern.beta,
            mtx=mtx, delta=kern.delta, name=name, sparse=2 if kern.ldb == 0 else 1, A="Atrans" if arch.startswith("arm_sme") else "std::get<0>({p}pointers)".format(p=prec), 
            p=prec, T="float" if prec == 'f' else "double"))

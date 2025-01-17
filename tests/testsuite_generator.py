@@ -58,7 +58,7 @@ void transpose_matrix(T* M, T* Mtrans, int rows, int cols) {
 
 template <typename T>
 void gemm_ref(unsigned M, unsigned N, unsigned K, unsigned LDA, unsigned LDB, unsigned LDC, T ALPHA, T BETA, T* A, T* B, T* C) {
-
+/*
   for (unsigned col = 0; col < N; ++col) {
     for (unsigned row = 0; row < M; ++row) {
       C[row + col * LDC] = BETA * C[row + col * LDC];
@@ -71,7 +71,7 @@ void gemm_ref(unsigned M, unsigned N, unsigned K, unsigned LDA, unsigned LDB, un
       }
     }
   }
-/*
+*/
   for (unsigned row = 0; row < M; ++row) {
     for (unsigned col = 0; col < N; ++col) {
       C[row * LDC + col] = BETA * C[row * LDC + col];
@@ -84,7 +84,7 @@ void gemm_ref(unsigned M, unsigned N, unsigned K, unsigned LDA, unsigned LDB, un
       }
     }
   }
-*/
+
 }
 
 template <typename T>

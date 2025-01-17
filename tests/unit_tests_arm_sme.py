@@ -22,7 +22,10 @@ kernels = []
 delta_sp = 1e-4 # epsilon is around e-7 => /2 ... For most cases, 1e-6 is enough
 delta_dp = 1e-7 # epsilon is around e-15 => /2
 
-kernels.append(generator.DenseKernel("sme_base_test1", 8, 8, 8, 8, 8, 8, 1.0, 0.0, [x.getBlocksize(8, 8, 1, v_size) for x in blocksize_algs], delta_dp))
+# kernels.append(generator.DenseKernel("sme_base_test1", 8, 8, 8, 8, 8, 8, 1.0, 0.0, [x.getBlocksize(8, 8, v_size, v_size) for x in blocksize_algs], delta_dp))
+kernels.append(generator.DenseKernel("sme_base_test2", 8, 8, 8, 8, 8, 8, 1.0, 2.0, [x.getBlocksize(8, 8, v_size, v_size) for x in blocksize_algs], delta_dp))
+print(kernels)
+
 #kernels.append(generator.DenseKernel("sme_base_test2", 16, 16, 16, 16, 16, 16, 1.0, 0.0, [x.getBlocksize(16, 16, 1, v_size) for x in blocksize_algs], delta_dp))
 #kernels.append(generator.DenseKernel("sme_base_test3", 8, 8, 8, 8, 8, 8, 2.1, 2.1, [x.getBlocksize(8, 8, 1, v_size) for x in blocksize_algs], delta_dp))
 

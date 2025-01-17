@@ -43,6 +43,9 @@ class Register(Operand):
     def __init__(self, typeinfo, value) -> None:
         self.typeinfo = typeinfo
         self.value = str(value)
+    
+    def __str__(self):
+        return self.value
 
     @property
     def ugly(self):

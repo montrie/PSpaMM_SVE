@@ -88,17 +88,21 @@ void {funcName} (const {real_type}* A, const {real_type}* B, {real_type}* C, con
 
     def make_reg_blocks(self, bm: int, bn: int, bk: int, v_size: int, nnz: int, m: int, n: int, k: int):
         vm = self.ceil_div(bm, v_size)              # vm can be 0 if bm < v_size -> makes ceil_div necessary
-        assert ((bn + bk) * vm + bn * bk <= 32)     # Needs to fit in SVE z registers
+        vk = self.ceil_div(bk, v_size)
+        assert ((bn + vk) * vm + bn * vk <= 32)     # Needs to fit in SVE z registers
         prec = self.precision_to_suffix() #"d" if self.get_precision() == Precision.DOUBLE else "s"
         c_mat_range = self.get_v_size
 
+        print(f"bm={bm}, bn={bn}, bk={bk}")
         # use max(vm, 1) in case bm < v_size, otherwise we get no A_regs/C_regs
         # TODO: adjust the register creation according to scripts/max_arm_sme.py
         # TODO: we prob. need to introduce vn to vectorize the B_reg loads
         A_regs = Matrix([[z(max(vm, 1) * c + r , prec) for c in range(bk)] for r in range(max(vm, 1))])
-        B_regs = Matrix([[z(max(vm, 1) * bk + bn * r + c, prec) for c in range(bn)] for r in range(bk)])
+        B_regs = Matrix([[z(max(vm, 1) * bk + bn * r + c, prec) for c in range(bn)] for r in range(vk)])
+#        B_regs = Matrix([[z(max(vm, 1) * bk + bn * r + c, prec) for c in range(bn)] for r in range(bk)])
 # TODO: inner list should have c running from 0 to num_rows in a tile, n from 0 to number of tiles depending on data type
-        C_regs = Matrix([[za(prec, 0, r(13), c) for c in range(bn)] for n in range(max(vm, 1))])
+        C_regs = Matrix([[za(prec, 0, r(13), c) for c in range(self.get_v_size())] for n in range(max(vm, 1))])
+#         C_regs = Matrix([[za(prec, 0, r(13), c) for c in range(bn)] for n in range(max(vm, 1))])
 #        C_regs = Matrix([[z(32 - max(vm, 1) * bn + max(vm, 1) * c + r, prec) for c in range(bn)] for r in range(max(vm, 1))])
 
         # TODO: needs to be the first entry in B_regs, I think we can get away again with not statically assigning an alpha/beta register
@@ -358,12 +362,14 @@ void {funcName} (const {real_type}* A, const {real_type}* B, {real_type}* C, con
         max_offs = (2 ** 6 - 1) * multiple
 # TODO: switch 'for bni in range(bn)' to a v_sized version using Vn = self.ceil_div(bn, v_size) -> for Vni in range(Vn):
         Vn = self.ceil_div(bn, v_size)
+        Vk = self.ceil_div(bk, v_size)
+        print(v_size)
 
         # TODO: if we want to interleave loads and fmlas, we can merge the following two loops within the bni loop
         for Vmi in range(Vm):
             # set to all v_size predicates to true, we want to replicate a B element into a whole vector
             # p_zeroing = self.pred_n_trues(v_size, v_size, True, "z")
-            for bki in range(bk):  # inside this k-block
+            for bki in range(Vk):  # inside this k-block #TODO: was bk before
                 # TODO: bni needs to iterate over bn in steps of v_size
                 for Vni in range(Vn):  # inside this n-block
                     # TODO: we want to process whole vectors of B elements with length v_size
@@ -407,7 +413,7 @@ void {funcName} (const {real_type}* A, const {real_type}* B, {real_type}* C, con
         for Vmi in range(Vm):
             p_merging = self.pred_n_trues(bm - Vmi * v_size, v_size, False, "m")
             end_index = bm if Vmi + 1 == Vm else Vmi * v_size + v_size  # end_index helps us print the right index ranges
-            for bki in range(bk):  # inside this k-block
+            for bki in range(Vk):  # inside this k-block #TODO: was bk before
                 # TODO: bni needs to iterate over bn in steps of v_size
                 for Vni in range(Vn):  # inside this n-block
                     # TODO: similar to p_merging, we probably need to define a Bn = max(self.ceil_div(bn, v_size), 1) and iterate using Bni

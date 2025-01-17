@@ -15,6 +15,12 @@ from pspamm.cursors import *
 import pspamm.architecture
 import numpy
 
+#TODO: DELETE
+import os
+import signal
+import time
+import sys
+
 
 def decompose_pattern(k, n, pattern:Matrix[bool], bk:int, bn:int) -> Tuple[Matrix[int], List[Matrix[bool]]]:
     Bk,Bn = k//bk, n//bn
@@ -78,6 +84,15 @@ class MatMul:
                  prefetching: str = None,
                  **kwargs  # Accept and ignore args which don't belong
                  ) -> None:
+
+        if "DEBUG_SUBPROCESS" in os.environ:
+            pid = os.getpid()
+            print(f"Waiting for debugger to attach to PID {pid}...", file=sys.stderr)
+            debug_flag_file = f"/tmp/debugger_attached_{pid}"
+            with open(debug_flag_file, "w") as f:
+                f.write("waiting")
+            while not os.path.exists(f"/tmp/debugger_continue_{pid}"):
+                time.sleep(1)  # Poll until a "continue" file is created
 
         self.m = m
         self.n = n
@@ -245,12 +260,25 @@ class MatMul:
                 if self.beta != 1.0:
                     if self.use_bcst:
                         asm.add(bcst(self.beta_bcst_reg, self.beta_reg[1], "Broadcast beta"))
+                        print("A regs shape:")
+                        print(self.A_regs.shape)
+                        print("B regs shape:")
+                        print(self.B_regs.shape)
+                        print("C regs shape:")
+                        print(regs.shape)
                     for ic in range(regs.shape[1]):
                         for ir in range(regs.shape[0]):
                             pred_m = None if not self.is_sve else self.generator.pred_n_trues(self.bm - ir * self.v_size, self.v_size, "m")
                             # TODO: is there a better way to handle SME not allowing multiplication of ZA rows with vector registers?
                             if self.is_sme:
                                 #TODO: add MOV of ZA row to vector register, use A_regs as intermediate registers to perform multiplication, there should be enough of them
+                                print(self.A_regs)
+                                print("\n")
+                                print(self.B_regs)
+                                print("\n")
+                                print(self.C_regs)
+                                print("\n")
+
                                 asm.add(mov(regs[ir,ic], self.A_regs[ir,ic], True, "move ZA row to vector register", pred=pred_m))
                                 asm.add(mul(self.A_regs[ir,ic], self.beta_reg[1], self.A_regs[ir,ic], "C = beta * C", pred=pred_m))
                                 asm.add(mov(self.A_regs[ir,ic], regs[ir,ic], True, "move vector register to ZA row", pred=pred_m))
