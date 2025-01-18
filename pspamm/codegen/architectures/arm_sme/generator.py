@@ -78,6 +78,18 @@ void {funcName} (const {real_type}* A, const {real_type}* B, {real_type}* C, con
         return {Precision.DOUBLE: "d",
                 Precision.SINGLE: "s"}[self.precision]
 
+    def get_tile_slice_max_offset(self):
+        # determines the largest allowed offset when accessing a tile slice using a general purpose register 
+        # containing a base 'address' and an immediate offset
+        return {Precision.DOUBLE: 2,
+                Precision.SINGLE: 4}[self.precision]
+
+    def get_max_tile_number(self):
+        # the maximum number of tiles in the ZA register is dependant on the size of its elements (half-words, singles, doubles)
+        # it is also inversly proportional to the maximum allowed immediate offset when accessing a tile slice
+        # for doubles there are 8 tiles, for singles there are 4 tiles, etc. until we get only 1 tile for 8 byte elements in ZA
+        return 16 // self.get_tile_slice_max_offset()
+
     # taken from https://stackoverflow.com/questions/14822184/is-there-a-ceiling-equivalent-of-operator-in-python
     def ceil_div(self, n, d):
         return -(n // -d)
@@ -101,7 +113,7 @@ void {funcName} (const {real_type}* A, const {real_type}* B, {real_type}* C, con
         B_regs = Matrix([[z(max(vm, 1) * bk + bn * r + c, prec) for c in range(bn)] for r in range(vk)])
 #        B_regs = Matrix([[z(max(vm, 1) * bk + bn * r + c, prec) for c in range(bn)] for r in range(bk)])
 # TODO: inner list should have c running from 0 to num_rows in a tile, n from 0 to number of tiles depending on data type
-        C_regs = Matrix([[za(prec, 0, r(13), c) for c in range(self.get_v_size())] for n in range(max(vm, 1))])
+        C_regs = Matrix([[za(prec, 0, r(c // self.get_tile_slice_max_offset() + 12), c) for c in range(self.get_v_size())] for n in range(max(vm, 1))])
 #         C_regs = Matrix([[za(prec, 0, r(13), c) for c in range(bn)] for n in range(max(vm, 1))])
 #        C_regs = Matrix([[z(32 - max(vm, 1) * bn + max(vm, 1) * c + r, prec) for c in range(bn)] for r in range(max(vm, 1))])
 
@@ -112,9 +124,9 @@ void {funcName} (const {real_type}* A, const {real_type}* B, {real_type}* C, con
 
         starting_regs = [r(0), r(1), r(2), r(3), r(4), r(5), r(6)]  # r6 is needed for predicate creation, r5 is added in init_prefetching()
 
-        additional_regs = [r(11), l("0.0"), r(10), r(8), r(13), r(14)]  # r10 used for scaling offsets, r13 for ZA tile slice access
+        additional_regs = [r(11), l("0.0"), r(10), r(8), r(12), r(13), r(14), r(15)]  # r10 used for scaling offsets, r12-r15 for ZA tile slice access
 
-        loop_reg = r(12)
+        loop_reg = r(9)
 
         self.init_registers(bm, bn, v_size)
 
@@ -133,9 +145,14 @@ void {funcName} (const {real_type}* A, const {real_type}* B, {real_type}* C, con
                              nnz: int
                              ) -> Block:
 
-        # initialize register w13 which is needed for ZA tile slice access
+        # initialize register w12 - w15 which are needed for ZA tile slice access
         asm = block("Register based scaling using w13 as the base register to access ZA tile slices")
-        asm.add(mov(0, additional_regs[4], False, "base index of ZA tiles"))
+        max_tiles = self.get_max_tile_number() #TODO: might be not necessary after all
+        max_offset = self.get_tile_slice_max_offset()
+        # TODO: not sure if self.v_len is correct here, we need an 8 for doubles and a 16 for singles
+        for i in range(self.get_v_size()):
+            if i % max_offset == 0:
+                asm.add(mov(i, additional_regs[4 + (i // max_offset)], False, "base index of ZA tile slice"))
         return asm
 
     def make_b_pointers(self,
