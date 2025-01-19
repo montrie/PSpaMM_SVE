@@ -101,6 +101,7 @@ void {funcName} (const {real_type}* A, const {real_type}* B, {real_type}* C, con
     def make_reg_blocks(self, bm: int, bn: int, bk: int, v_size: int, nnz: int, m: int, n: int, k: int):
         vm = self.ceil_div(bm, v_size)              # vm can be 0 if bm < v_size -> makes ceil_div necessary
         vk = self.ceil_div(bk, v_size)
+        vn = self.ceil_div(bn, v_size)
         assert ((bn + vk) * vm + bn * vk <= 32)     # Needs to fit in SVE z registers
         prec = self.precision_to_suffix() #"d" if self.get_precision() == Precision.DOUBLE else "s"
         c_mat_range = self.get_v_size
@@ -110,7 +111,7 @@ void {funcName} (const {real_type}* A, const {real_type}* B, {real_type}* C, con
         # TODO: adjust the register creation according to scripts/max_arm_sme.py
         # TODO: we prob. need to introduce vn to vectorize the B_reg loads
         A_regs = Matrix([[z(max(vm, 1) * c + r , prec) for c in range(bk)] for r in range(max(vm, 1))])
-        B_regs = Matrix([[z(max(vm, 1) * bk + bn * r + c, prec) for c in range(bn)] for r in range(vk)])
+        B_regs = Matrix([[z(max(vm, 1) * bk + vn * r + c, prec) for c in range(vn)] for r in range(bk)]) # switched bn with vn
 #        B_regs = Matrix([[z(max(vm, 1) * bk + bn * r + c, prec) for c in range(bn)] for r in range(bk)])
 # TODO: inner list should have c running from 0 to num_rows in a tile, n from 0 to number of tiles depending on data type
         C_regs = Matrix([[za(prec, 0, r(c // self.get_tile_slice_max_offset() + 12), c) for c in range(self.get_v_size())] for n in range(max(vm, 1))])
@@ -301,6 +302,8 @@ void {funcName} (const {real_type}* A, const {real_type}* B, {real_type}* C, con
                         self.prefetch_count += 1
                     else:
                         # TODO: cursor.name can help to differentiate A and C matrix
+                        # if cursor.name == 'A':
+                        addr.disp //= self.precision.value
                         asm.add(ld(addr, registers[ir, ic], True, comment, pred=p_zeroing, is_B=is_B, scalar_offs=False,
                                    add_reg=additional_regs[2], za=za_reg))
 
@@ -386,7 +389,7 @@ void {funcName} (const {real_type}* A, const {real_type}* B, {real_type}* C, con
         for Vmi in range(Vm):
             # set to all v_size predicates to true, we want to replicate a B element into a whole vector
             # p_zeroing = self.pred_n_trues(v_size, v_size, True, "z")
-            for bki in range(Vk):  # inside this k-block #TODO: was bk before
+            for bki in range(bk):  # inside this k-block #TODO: was Vk before
                 # TODO: bni needs to iterate over bn in steps of v_size
                 for Vni in range(Vn):  # inside this n-block
                     # TODO: we want to process whole vectors of B elements with length v_size
@@ -430,7 +433,7 @@ void {funcName} (const {real_type}* A, const {real_type}* B, {real_type}* C, con
         for Vmi in range(Vm):
             p_merging = self.pred_n_trues(bm - Vmi * v_size, v_size, False, "m")
             end_index = bm if Vmi + 1 == Vm else Vmi * v_size + v_size  # end_index helps us print the right index ranges
-            for bki in range(Vk):  # inside this k-block #TODO: was bk before
+            for bki in range(bk):  # inside this k-block #TODO: was Vk before
                 # TODO: bni needs to iterate over bn in steps of v_size
                 for Vni in range(Vn):  # inside this n-block
                     # TODO: similar to p_merging, we probably need to define a Bn = max(self.ceil_div(bn, v_size), 1) and iterate using Bni

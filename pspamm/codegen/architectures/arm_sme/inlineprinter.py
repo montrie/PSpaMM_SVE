@@ -172,8 +172,8 @@ class InlinePrinter(Visitor):
                 # TODO: use MOVA instead?
                 s = "mov {}, {}{}".format(stmt.dest.ugly, p, src_str)
             else:
-                s = "fmov {}, {}".format(stmt.dest.ugly, src_str)
-                # s = "zero {za}"
+                # s = "fmov {}, {}".format(stmt.dest.ugly, src_str)
+                s = "zero {za}"
         else:
             s = "mov {}, {}".format(stmt.dest.ugly, src_str)
         self.addLine(s, stmt.comment)
