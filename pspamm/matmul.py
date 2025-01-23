@@ -86,6 +86,7 @@ class MatMul:
                  ) -> None:
 
         if "DEBUG_SUBPROCESS" in os.environ:
+            # if os.environ["DEBUG_SUBPROCESS"] == 1:
             pid = os.getpid()
             print(f"Waiting for debugger to attach to PID {pid}...", file=sys.stderr)
             debug_flag_file = f"/tmp/debugger_attached_{pid}"
@@ -268,6 +269,7 @@ class MatMul:
                         print(regs.shape)
                     for ic in range(regs.shape[1]):
                         for ir in range(regs.shape[0]):
+                            #TODO: added bool parameters (False) to function call, switched parameter positioning and removed bool param. such that SVE impl. doesnt break
                             pred_m = None if not self.is_sve else self.generator.pred_n_trues(self.bm - ir * self.v_size, self.v_size, "m")
                             # TODO: is there a better way to handle SME not allowing multiplication of ZA rows with vector registers?
                             if self.is_sme:
@@ -278,6 +280,7 @@ class MatMul:
                                 print("\n")
                                 print(self.C_regs)
                                 print("\n")
+                                print(pred_m.value)
 
                                 asm.add(mov(regs[ir,ic], self.A_regs[ir,ic], True, "move ZA row to vector register", pred=pred_m))
                                 asm.add(mul(self.A_regs[ir,ic], self.beta_reg[1], self.A_regs[ir,ic], "C = beta * C", pred=pred_m))
@@ -303,6 +306,7 @@ class MatMul:
                     if self.beta != 0.0 and self.beta != 1.0:
                         store_block.add(bcst(self.beta_bcst_reg, self.beta_reg[1], "Broadcast beta"))
 
+                print("for x in range() with regs.shape[1]={} and self.A_regs.shape[1]={}".format(regs.shape[1], self.A_regs.shape[1]))
                 for x in range(0, regs.shape[1], self.A_regs.shape[1]):
                     A_regs_cut = self.A_regs[0:min(self.A_regs.shape[0], regs.shape[0]), 0:regs.shape[1]-x]
                     if self.beta != 0.0:
@@ -310,6 +314,7 @@ class MatMul:
 
                     for ir in range(A_regs_cut.shape[0]):
                         for ic in range(A_regs_cut.shape[1]):
+                            #TODO: added bool parameters (False) to function call
                             pred_m = None if not self.is_sve else self.generator.pred_n_trues(self.bm - ir*self.v_size, self.v_size, "m")
                             #TODO: SME doesnt implement FMUL with ZA register as possible source/destination
                             if self.beta != 0.0 and self.beta != 1.0:
@@ -318,7 +323,18 @@ class MatMul:
                                 store_block.add(mul(regs[ir, x + ic], self.alpha_reg[1], A_regs_cut[ir, ic], "C = C + alpha * AB", pred=pred_m))
                             else:
                                 #TODO: if we are in arm_sme, we might be able to define the ADD vector as a ZA vector -> needs SME2
-                                store_block.add(fma(regs[ir, x + ic], self.alpha_reg[1], A_regs_cut[ir, ic], "C = C + alpha * AB", False, pred=pred_m))
+                                if self.is_sme:
+                                    print("ir={}, ic={}, x={}".format(ir, ic, x))
+                                    if (ic + 1) % 4 == 0:
+                                        # pass
+                                        # regs[ir, x+ic-4] because we need to pass the first tile slice of the vector group of ZA
+                                        # in general: we pass the first vector register of the register group so we can construct the necessary group string
+                                        # do we subtract 4 from ic or ir??
+                                        store_block.add(fma(self.alpha_reg[1], A_regs_cut[ir, ic + 1 - 4], regs[ir, x + ic + 1 - 4], "C = C + alpha * AB", False, pred=pred_m))
+                                else:
+                                    store_block.add(fma(regs[ir, x + ic], self.alpha_reg[1], A_regs_cut[ir, ic], "C = C + alpha * AB", False, pred=pred_m))
+                    if self.is_sme:
+                        A_regs_cut = regs[:,:]
                     store_block.add(self.generator.move_register_block(self.C, C_ptr, Coords(), A_regs_cut, self.v_size, self.additional_regs, None, True, self.prefetching, self.ldc * x))
                 asm.add(store_block)
 

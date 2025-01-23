@@ -42,7 +42,7 @@ class InlinePrinter(Visitor):
     def visitFma(self, stmt: FmaStmt):
         b = stmt.bcast_src.ugly
         m = stmt.mult_src.ugly
-        a = stmt.add_dest.ugly
+        a = stmt.add_dest.ugly_mem_vector_group
         p = self.p_string(stmt.pred)
 
         s = "fmla {}, {}{}, {}".format(a, p, m, b)
@@ -50,9 +50,9 @@ class InlinePrinter(Visitor):
         self.addLine(s, stmt.comment)
 
     def visitFmopa(self, stmt: FmopaStmt):
-# floating-point outer product and accumulate:
-# FMOPA <ZAda>.D, <Pn>/M, <Pm>/M, <Zn>.D, <Zm>.D
-# if we have to reuse fma: put 2 predicates into stmt.pred, add_dest is ZA tile, bcast_src is B_reg, mult_src is A_reg
+        # floating-point outer product and accumulate:
+        # FMOPA <ZAda>.D, <Pn>/M, <Pm>/M, <Zn>.D, <Zm>.D
+        # if we have to reuse fma: put 2 predicates into stmt.pred, add_dest is ZA tile, bcast_src is B_reg, mult_src is A_reg
         za = stmt.za.ugly_register
         mult = stmt.mult_src.ugly
         mult2 = stmt.mult_src2.ugly
@@ -68,15 +68,17 @@ class InlinePrinter(Visitor):
         b = stmt.src.ugly
         m = stmt.mult_src.ugly
         a = stmt.dest.ugly
+        p = self.p_string(stmt.pred)
 
         if a != b:
-            s1 = "movprfx {}, {}".format(a.split(".")[0], b.split(".")[0])
-            self.addLine(s1, "move {} into {}".format(b, a))
+            s1 = "mov {}, {}{}".format(a, p, b)
+            self.addLine(s1, "move tile slice {} into {}".format(stmt.src.ugly_offset, a))
+            # s2 = "movprfx {}, {}".format(a.split(".")[0], b.split(".")[0])
+            # self.addLine(s2, "move {} into {}".format(b, a))
             b = a
 
-# TODO: alpha*A*B will remain as an fmul instruction
-#       beta*C: there seems to be no multiplication of ZA slices, we need to mov/ld a C vector into an SVE register, then multiply it with beta and move the result back into ZA
-        p = self.p_string(stmt.pred)
+        # TODO: alpha*A*B will remain as an fmul instruction
+        #       beta*C: there seems to be no multiplication of ZA slices, we need to mov/ld a C vector into an SVE register, then multiply it with beta and move the result back into ZA
         s = "fmul {}, {}{}, {}".format(a, p, b, m)
         self.addLine(s, stmt.comment)
 
@@ -205,10 +207,13 @@ class InlinePrinter(Visitor):
 
         elif stmt.typ == AsmType.f64x8 and stmt.aligned:
             if stmt.za != None:
-                if stmt.src.ugly_offset == stmt.za.ugly_offset:
-                    s = "ldr {}, {}".format(stmt.za.ugly, src_str)
-                else: 
-                    s = "ld1{}{} {}, {}{}".format(is_B, prec, stmt.dest.ugly, p, src_str)
+                # if stmt.src.ugly_offset == stmt.za.ugly_offset:
+                #     s = "ldr {}, {}".format(stmt.za.ugly, src_str)
+                # else: 
+                #     s = "ld1{}{} {}, {}{}".format(is_B, prec, stmt.dest.ugly, p, src_str)
+                if stmt.src.ugly_offset == "0":
+                        src_str = "[{}]".format(stmt.src.ugly_base)
+                s = "ld1{}{} {{{}}}, {}{}".format(is_B, prec, stmt.dest.ugly, p, src_str)
             else:
                 # if stmt.is_B:
                 #     s = "ld1r{} {}, {}{}".format(prec, stmt.dest.ugly, p, src_str)

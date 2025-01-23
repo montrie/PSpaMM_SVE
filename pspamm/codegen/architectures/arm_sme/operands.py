@@ -93,7 +93,14 @@ class Register_ZA(Register):
     @property
     def ugly(self):
         # access the tile-th horizontal slice of the ZA register
-        return "za{}h.{}{}".format(self.tile, self.ugly_precision, self.ugly_mem)
+        return "za{}h.{}{}".format(self.tile, self.ugly_precision, self.ugly_mem_test)
+    @property
+    def ugly_mem_test(self):
+        return "[{}, #{}]".format(self.ugly_base, self.offset % 2)
+    
+    @property
+    def ugly_mem_vector_group(self):
+        return "za.{}[{}, #{}, VGx4]".format(self.ugly_precision, self.ugly_base, self.offset % 2)
 
     @property
     def ugly_register(self):

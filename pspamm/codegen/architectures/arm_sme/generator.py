@@ -52,7 +52,7 @@ void {funcName} (const {real_type}* A, const {real_type}* B, {real_type}* C, con
     def get_template(self):
         return self.template
 
-    def pred_n_trues(self, num_trues: int, v_size: int, b_reg_pred: bool, suffix: str = None) -> Register_ARM:
+    def pred_n_trues(self, num_trues: int, v_size: int, suffix: str = None, b_reg_pred: bool = False) -> Register_ARM:
         """pred takes num_trues=num of true elements and suffix=type of predicate (m or z) for merging or zeroing
          we only use p7 as all-true predicate and p0 as overhead predicate
          e.g. pred_n_trues(n=4, v_size=8, suffix="m") returns the predicate p0/m with the first 4 elements
@@ -225,7 +225,7 @@ void {funcName} (const {real_type}* A, const {real_type}* B, {real_type}* C, con
         action = "Store" if store else "Load"
         asm = block("{} {} register block @ {}".format(action, cursor.name, block_offset))
         prec = self.get_precision()
-        is_za = cursor.name == "C"
+        is_za = registers[0, 0].value.startswith("ZA")# cursor.name == "C"
 
         # Determine whether we use prefetching and if we are currently operating on C
         do_prefetch = self.prefetch_reg is not None and cursor.name == "C" and store
@@ -245,6 +245,7 @@ void {funcName} (const {real_type}* A, const {real_type}* B, {real_type}* C, con
         prev_disp = 0
         offs_threshold = self.get_v_size() // self.v_len
         prev_overhead = True
+        scalar_offs = cursor.name == 'C'  # scalar offsets are necessary for loading/storing the C matrix, but not for loading the A matrix
         # this gives us the base register of 'cursor' irrespective of the dummy offset we use
         prev_base = cursor.look(cursor_ptr, block_offset, Coords(down=0, right=0))[0].base
 
@@ -254,13 +255,13 @@ void {funcName} (const {real_type}* A, const {real_type}* B, {real_type}* C, con
                     processed = ir * v_size
                     za_reg = registers[ir, ic] if is_za else None
                     # TODO: delete?
-                    # p = self.pred_n_trues(b_row - processed, v_size, False) if not is_B else self.pred_n_trues(v_size, v_size, True)
-                    # p_zeroing = self.pred_n_trues(b_row - processed, v_size, False, "z") if not is_B else self.pred_n_trues(v_size, v_size, True, "z")
+                    # p = self.pred_n_trues(b_row - processed, v_size, None, False) if not is_B else self.pred_n_trues(v_size, v_size, None, True)
+                    # p_zeroing = self.pred_n_trues(b_row - processed, v_size, "z", False) if not is_B else self.pred_n_trues(v_size, v_size, "z", True)
 
                     # setup predicate registers
                     num_elems = v_size if is_B else b_row - processed
-                    p = self.pred_n_trues(num_elems, v_size, is_B)
-                    p_zeroing = self.pred_n_trues(num_elems, v_size, is_B, "z")
+                    p = self.pred_n_trues(num_elems, v_size, None, is_B)
+                    p_zeroing = self.pred_n_trues(num_elems, v_size, "z", is_B)
 
                     cell_offset = Coords(down=ir * v_size, right=ic)
 
@@ -285,12 +286,14 @@ void {funcName} (const {real_type}* A, const {real_type}* B, {real_type}* C, con
 
                     if store:
                         # TODO: scalar_offs set to True so we can use x10 as a scalar register offset
-                        if cont_counter % offs_threshold == 0:
-                            # TODO: might result in float value?
-                            za_row = cont_counter #/ offs_threshold
-                            asm.add(mov(za_row, za_reg.base, False))
-                        za_reg.offset %= offs_threshold
-                        asm.add(st(registers[ir, ic], addr, True, comment, pred=p, scalar_offs=True,
+                        # if cont_counter % offs_threshold == 0:
+                        #     # TODO: might result in float value?
+                        #     za_row = cont_counter #/ offs_threshold
+                        #     asm.add(mov(za_row, za_reg.base, False))
+                        print(cursor.name)
+                        if is_za:
+                            za_reg.offset %= offs_threshold
+                        asm.add(st(registers[ir, ic], addr, True, comment, pred=p, scalar_offs=scalar_offs,
                                    add_reg=additional_regs[2], za=za_reg))
                         # perform prefetching after a store instruction, similar to KNL case
                         if do_prefetch and self.prefetch_count % threshold == 0:
@@ -302,9 +305,15 @@ void {funcName} (const {real_type}* A, const {real_type}* B, {real_type}* C, con
                         self.prefetch_count += 1
                     else:
                         # TODO: cursor.name can help to differentiate A and C matrix
-                        # if cursor.name == 'A':
-                        addr.disp //= self.precision.value
-                        asm.add(ld(addr, registers[ir, ic], True, comment, pred=p_zeroing, is_B=is_B, scalar_offs=False,
+                        if is_za:
+                            za_reg.offset %= offs_threshold
+                        else:
+                            addr.disp //= self.precision.value
+                            # we load elements of C into the ZA register
+                            # if cont_counter % offs_threshold == 0:
+                            #     za_row = cont_counter
+                            #     asm.add(mov(za_row, za_reg.base, False))
+                        asm.add(ld(addr, registers[ir, ic], True, comment, pred=p_zeroing, is_B=is_B, scalar_offs=scalar_offs,
                                    add_reg=additional_regs[2], za=za_reg))
 
                     prev_overhead = int(p.ugly[1]) == 0  # determine if we previously used p0 (overhead predicate)
@@ -388,12 +397,12 @@ void {funcName} (const {real_type}* A, const {real_type}* B, {real_type}* C, con
         # TODO: if we want to interleave loads and fmlas, we can merge the following two loops within the bni loop
         for Vmi in range(Vm):
             # set to all v_size predicates to true, we want to replicate a B element into a whole vector
-            # p_zeroing = self.pred_n_trues(v_size, v_size, True, "z")
+            # p_zeroing = self.pred_n_trues(v_size, v_size, "z", True)
             for bki in range(bk):  # inside this k-block #TODO: was Vk before
                 # TODO: bni needs to iterate over bn in steps of v_size
                 for Vni in range(Vn):  # inside this n-block
                     # TODO: we want to process whole vectors of B elements with length v_size
-                    p_zeroing = self.pred_n_trues(bn - Vni * v_size, v_size, True, "z")
+                    p_zeroing = self.pred_n_trues(bn - Vni * v_size, v_size, "z", True)
                     to_cell = Coords(down=bki, right=Vni*v_size)
                     # to_cell = Coords(down=bki*v_size, right=Vni)
                     if B.has_nonzero_cell(B_ptr, to_B_block, to_cell):
@@ -431,13 +440,13 @@ void {funcName} (const {real_type}* A, const {real_type}* B, {real_type}* C, con
                             bs.append(B_regs[bki, Vni])
 
         for Vmi in range(Vm):
-            p_merging = self.pred_n_trues(bm - Vmi * v_size, v_size, False, "m")
+            p_merging = self.pred_n_trues(bm - Vmi * v_size, v_size, "m", False)
             end_index = bm if Vmi + 1 == Vm else Vmi * v_size + v_size  # end_index helps us print the right index ranges
             for bki in range(bk):  # inside this k-block #TODO: was Vk before
                 # TODO: bni needs to iterate over bn in steps of v_size
                 for Vni in range(Vn):  # inside this n-block
                     # TODO: similar to p_merging, we probably need to define a Bn = max(self.ceil_div(bn, v_size), 1) and iterate using Bni
-                    p_merging2 = self.pred_n_trues(bn - Vni * v_size, v_size, True, "m")
+                    p_merging2 = self.pred_n_trues(bn - Vni * v_size, v_size, "m", True)
                     to_cell = Coords(down=bki, right=Vni*v_size)
                     if B.has_nonzero_cell(B_ptr, to_B_block, to_cell):
                         B_cell_addr, B_comment = B.look(B_ptr, to_B_block, to_cell)

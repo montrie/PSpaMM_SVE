@@ -63,7 +63,7 @@ def make(kernels, arch):
                 reglen = veclen // 128
                 v_len = 2 * reglen if prec == 'd' else 4 * reglen
                 # this should be the same assertion as in ../scripts/max_arm_sve.py
-                bk = v_len# 1
+                bk = 1 if "sve" in arch else v_len
                 # ceiling division
                 vm = -(bm // -v_len)  
                 vk = -(bk // -v_len) # should come out to 1 for bk = 1, meaning no changes for sve
@@ -116,7 +116,7 @@ def make(kernels, arch):
                 reglen = veclen // 128
                 v_len = 2 * reglen if prec == 'd' else 4 * reglen
                 # this should be the same assertion as in ../scripts/max_arm_sve.py
-                bk = v_len #1
+                bk = 1 if "sve" in arch else v_len
                 # ceiling division
                 vm = -( bm // -v_len)
                 vk = -( bk // -v_len) # should come out to 1 for bk = 1, meaning no changes for sve
@@ -138,11 +138,11 @@ def make(kernels, arch):
   {p}pointers = pre<{T}>({m}, {n}, {k}, {lda}, ldb, {ldc}, "{mtx}");
   posix_memalign(reinterpret_cast<void **>(&Atrans), 64, {lda}*{ldb}*sizeof({T}));
   transpose_matrix(std::get<0>({p}pointers), {p}Atrans, {lda}, {ldb});
-  printf("\\n");
-  pretty_print({m}, {k}, {lda}, std::get<0>{p}(pointers));
-  printf("\\n");
-  pretty_print({k},{m}, {lda}, Atrans);
-  printf("\\n");
+  // printf("\\n");
+  // pretty_print({m}, {k}, {lda}, std::get<0>{p}(pointers));
+  // printf("\\n");
+  // pretty_print({k},{m}, {lda}, Atrans);
+  // printf("\\n");
   setup_prefetch({p}prefetch, std::get<3>({p}pointers), {n}, {ldc});
   {name}({A}, std::get<{sparse}>({p}pointers), std::get<3>({p}pointers), {p}alpha, {p}beta, {p}prefetch);
   result = post<{T}>({m}, {n}, {k}, {lda}, &ldb, {ldc}, &{p}alpha, &{p}beta, std::get<0>({p}pointers), std::get<1>({p}pointers), std::get<3>({p}pointers), std::get<4>({p}pointers), {delta:.7f});
