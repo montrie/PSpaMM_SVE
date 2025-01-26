@@ -119,6 +119,15 @@ class Register_ZA(Register):
         return "{}".format(self.base.ugly).replace("x", "w")
 
     @property
+    def ugly_base_fmla(self):
+        return "w8"
+
+    @property
+    def ugly_mem_vector_group_fmla(self):
+        # same as ugly_mem_vector_group, but uses w8 as base register
+        return "za.{}[{}, #{}, VGx4]".format(self.ugly_precision, self.ugly_base_fmla, self.offset % 2)
+
+    @property
     def ugly_offset(self):
         return "{}".format(self.offset)
 

@@ -3,7 +3,7 @@ from pspamm.codegen.ast import *
 from pspamm.codegen.visitor import Visitor
 from pspamm.codegen.operands import *
 from pspamm.codegen.precision import *
-
+from pspamm.codegen.architectures.arm_sme.operands import z
 # TODO: p_string should not end in ', ', that should be part of the final asm string a visit function assembles
 
 class InlinePrinter(Visitor):
@@ -42,10 +42,19 @@ class InlinePrinter(Visitor):
     def visitFma(self, stmt: FmaStmt):
         b = stmt.bcast_src.ugly
         m = stmt.mult_src.ugly
-        a = stmt.add_dest.ugly_mem_vector_group
-        p = self.p_string(stmt.pred)
+        a = stmt.add_dest.ugly_mem_vector_group_fmla
+        # group_num = int(a[-2])
+        # zn_index = int(m[1:-2])  # should give us the number of the SVE vector
+        # zn_end_index = zn_index + group_num - 1
+        # zn_end_reg = z(zn_end_index, stmt.mult_src.ugly_precision)
+        # zn_end = zn_end_reg.ugly
+        #mult_str = "{{{}-{}}}".format(m, zn_end)
+        # p = self.p_string(stmt.pred)
 
-        s = "fmla {}, {}{}, {}".format(a, p, m, b)
+        # s = "fmla {}, {}, {}".format(a, mult_str, b)
+
+        #TODO: QEMU DOES NOT IMPLEMENT THE SME FMLA BC ITS A SME2 FEATURE
+        s = "FMLA NOT IN QEMU"
 
         self.addLine(s, stmt.comment)
 
@@ -127,6 +136,12 @@ class InlinePrinter(Visitor):
             # we can simply add the Constant to a register
             if stmt.additional is not None:
                 s = "add {}, {}, {}".format(stmt.dest.ugly, stmt.additional.ugly, stmt.src.ugly)
+            elif stmt.dest.ugly.startswith("z"):
+                # TODO: is there a better way to determine whether dest is a ZA tile slice?
+                p = "p7/m, "# self.p_string(stmt.pred)
+                dest = stmt.dest.ugly
+                src = stmt.src.ugly
+                s = "fadd {}, {}{}, {}".format(dest, p, dest, src)
             else:
                 s = "add {}, {}, {}".format(stmt.dest.ugly, stmt.dest.ugly, stmt.src.ugly)
             self.addLine(s, stmt.comment)

@@ -119,7 +119,7 @@ void {funcName} (const {real_type}* A, const {real_type}* B, {real_type}* C, con
 #        C_regs = Matrix([[z(32 - max(vm, 1) * bn + max(vm, 1) * c + r, prec) for c in range(bn)] for r in range(max(vm, 1))])
 
         # TODO: needs to be the first entry in B_regs, I think we can get away again with not statically assigning an alpha/beta register
-        b_reg = max(vm, 1) * bk
+        b_reg = vm*bk + vn*(bk-1) + vn - 1 + 1 #max(vm, 1) * bk
         alpha_reg = [z(b_reg, prec), z(b_reg, prec)]
         beta_reg = [z(b_reg + 1, prec), z(b_reg + 1, prec)]
 
@@ -308,7 +308,8 @@ void {funcName} (const {real_type}* A, const {real_type}* B, {real_type}* C, con
                         if is_za:
                             za_reg.offset %= offs_threshold
                         else:
-                            addr.disp //= self.precision.value
+                            if addr.ugly_base != "x2":
+                                addr.disp //= self.precision.value
                             # we load elements of C into the ZA register
                             # if cont_counter % offs_threshold == 0:
                             #     za_row = cont_counter

@@ -310,6 +310,7 @@ class MatMul:
                 for x in range(0, regs.shape[1], self.A_regs.shape[1]):
                     A_regs_cut = self.A_regs[0:min(self.A_regs.shape[0], regs.shape[0]), 0:regs.shape[1]-x]
                     if self.beta != 0.0:
+                        # TODO: MAYBE adjust move_register_block such that we move the contents from ZA to A_regs_cut (only if this is the only call to this function that passes a C pointer and A registers)
                         store_block.add(self.generator.move_register_block(self.C, C_ptr, Coords(), A_regs_cut, self.v_size, self.additional_regs, None, False, None, self.ldc * x))
 
                     for ir in range(A_regs_cut.shape[0]):
@@ -324,16 +325,32 @@ class MatMul:
                             else:
                                 #TODO: if we are in arm_sme, we might be able to define the ADD vector as a ZA vector -> needs SME2
                                 if self.is_sme:
+                                    # multiply alpha_reg onto A_regs_cut and add the A_regs_cut to the correct tile slice
+                                    # this should mimic a FMA instruction for now
+                                    # TODO: extend add such that it allows adding to a ZA tile slice
+                                    # mov ZA tile slice to B register
+                                    b_ir = ir if ir <= self.B_regs.shape[0] else self.B_regs.shape[0]
+                                    store_block.add(mov(regs[ir, x + ic], self.B_regs[ic, b_ir], True, "Move tile slice to vector register", pred=pred_m))
+                                    store_block.add(mul(self.B_regs[ic, b_ir], self.alpha_reg[1], self.B_regs[ic, b_ir], "alpha * AB", pred=pred_m))
+                                    # switched regs[ir, x + ic] with self.B_regs[]
+                                    store_block.add(add(A_regs_cut[ir, ic], self.B_regs[ic, b_ir], "C = C + alpha * AB"))
+                                    # mov result from B register back to za tile sclice
+                                    store_block.add(mov(self.B_regs[ic, b_ir], regs[ir, x + ic], True, "Move vector register to tile slice", pred=pred_m))
+
                                     print("ir={}, ic={}, x={}".format(ir, ic, x))
                                     if (ic + 1) % 4 == 0:
                                         # pass
                                         # regs[ir, x+ic-4] because we need to pass the first tile slice of the vector group of ZA
                                         # in general: we pass the first vector register of the register group so we can construct the necessary group string
                                         # do we subtract 4 from ic or ir??
-                                        store_block.add(fma(self.alpha_reg[1], A_regs_cut[ir, ic + 1 - 4], regs[ir, x + ic + 1 - 4], "C = C + alpha * AB", False, pred=pred_m))
+                                        # TODO:QEMU doesnt implement SME2, meaning the FMLA instruction is not available right now
+                                        # uncomment the next two lines when the FMLA instruction is available
+                                        # store_block.add(mov(regs[ir, x + ic + 1 - 4].base, self.additional_regs[3], False))
+                                        # store_block.add(fma(self.alpha_reg[1], A_regs_cut[ir, ic + 1 - 4], regs[ir, x + ic + 1 - 4], "C = C + alpha * AB", False, pred=pred_m))
+                                        pass
                                 else:
                                     store_block.add(fma(regs[ir, x + ic], self.alpha_reg[1], A_regs_cut[ir, ic], "C = C + alpha * AB", False, pred=pred_m))
-                    if self.is_sme:
+                    if self.is_sme and self.beta != 0.0 and self.beta != 1.0:
                         A_regs_cut = regs[:,:]
                     store_block.add(self.generator.move_register_block(self.C, C_ptr, Coords(), A_regs_cut, self.v_size, self.additional_regs, None, True, self.prefetching, self.ldc * x))
                 asm.add(store_block)
