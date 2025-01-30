@@ -290,9 +290,12 @@ class MatMul:
             else:
                 asm.add(self.generator.make_zero_block(regs, self.additional_regs))
 
+            # TODO: add a if self.is_sme clause for the make_microkernel part where we loop over Bk * Bn? or something else but we
+            # need a seperate loop for the microkernel, because the amount of fmopa instructions to calculate a C block is different 
+            # than in other version where we used fmla
             for Bki in range(0,Bk):
 
-                to_A = Coords(right=Bki)
+                to_A = Coords(right=Bki) #if not self.is_sme else Coords(right=)
                 to_B = Coords(right=Bni, down=Bki, absolute=True)
 
                 if self.B.has_nonzero_block(B_ptr, to_B):

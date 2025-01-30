@@ -31,7 +31,7 @@ kernels.append(generator.DenseKernel("sme_base_test5", 16, 16, 16, 16, 16, 16, 1
 
 # kernels.append(generator.DenseKernel("sme_mixed_test1", 8, 8, 8, 8, 8, 8, 1.0, 0.0, [x.getBlocksize(4, 4, v_size, v_size) for x in blocksize_algs], delta_dp))
 
-# print(kernels)
+print(kernels)
 
 #kernels.append(generator.DenseKernel("sme_base_test2", 16, 16, 16, 16, 16, 16, 1.0, 0.0, [x.getBlocksize(16, 16, 1, v_size) for x in blocksize_algs], delta_dp))
 #kernels.append(generator.DenseKernel("sme_base_test3", 8, 8, 8, 8, 8, 8, 2.1, 2.1, [x.getBlocksize(8, 8, 1, v_size) for x in blocksize_algs], delta_dp))

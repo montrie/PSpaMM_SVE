@@ -99,6 +99,13 @@ void {funcName} (const {real_type}* A, const {real_type}* B, {real_type}* C, con
         self.is_sparse = True
 
     def make_reg_blocks(self, bm: int, bn: int, bk: int, v_size: int, nnz: int, m: int, n: int, k: int):
+        self.m = m
+        self.n = n
+        self.k = k
+        self.bm = bm
+        self.bn = bn
+        self.bk = bk
+        
         vm = self.ceil_div(bm, v_size)              # vm can be 0 if bm < v_size -> makes ceil_div necessary
         vk = self.ceil_div(bk, v_size)
         vn = self.ceil_div(bn, v_size)
@@ -414,7 +421,7 @@ void {funcName} (const {real_type}* A, const {real_type}* B, {real_type}* C, con
 
                             # count how many elements we have processed between last step and this step
                             # TODO: defining prev_disp like this might be wrong, check if this works
-                            B_cell_addr.disp *= self.get_v_size()
+                            B_cell_addr.disp *= self.get_v_size() * (self.n // self.bn)
                             cont_counter = ((B_cell_addr.disp - prev_disp) // mul_vl)
                             larger_max_offset = cont_counter > max_mem_ins_mult
 
@@ -434,11 +441,14 @@ void {funcName} (const {real_type}* A, const {real_type}* B, {real_type}* C, con
                                 B_cell_addr.base = additional_regs[0]
                                 prev_base = B_cell_addr.base
                             # else:
-                            B_cell_addr.disp = (B_cell_addr.disp - prev_disp) // mul_vl
+                            B_cell_addr.base = prev_base
+                            B_cell_addr.disp = ((B_cell_addr.disp - prev_disp) // mul_vl)
 
                             # TODO: set is_B to False instead of is_B in order to use ld1d instead of ld1rd
                             asm.add(ld(B_cell_addr, B_regs[bki, Vni], True, B_comment, pred=p_zeroing, is_B=False))
                             bs.append(B_regs[bki, Vni])
+                            prev_overhead = int(p_zeroing.ugly[1]) == 0  # determine if we previously used p0 (overhead predicate)
+
 
         for Vmi in range(Vm):
             p_merging = self.pred_n_trues(bm - Vmi * v_size, v_size, "m", False)

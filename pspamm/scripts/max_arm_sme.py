@@ -17,6 +17,8 @@ def getBlocksize(m, n, bk, v_size=2):
 
     if maxval == 0:
         raise RuntimeError("Could not find an appropriate block size. We suggest padding the matrix dimensions")
+    
+    print(f"bm={bm}, bn={bn}, bk={bk}")
 
     return (bm, bn)
 
