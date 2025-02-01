@@ -84,7 +84,7 @@ class BlockCursor(Cursor):
              dest_block: Coords
             ) -> Tuple[AsmStmt, CursorLocation]:
 
-        comment = "Move {} to {str(dest_block)}".format(self.name)
+        comment = "Move {} to {}".format(self.name,str(dest_block))
 
         if dest_block.absolute:
             dest_loc = self.start_location(dest_block)
