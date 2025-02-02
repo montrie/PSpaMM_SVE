@@ -21,13 +21,44 @@ kernels = []
 # double and single precision
 delta_sp = 1e-4 # epsilon is around e-7 => /2 ... For most cases, 1e-6 is enough
 delta_dp = 1e-7 # epsilon is around e-15 => /2
-
+"""
+# batches of 4 unit tests following the same alpha/beta parameter configuration:
+# 1. alpha = 1.0, beta = 0.0 -> default config
+# 2. alpha = 1.0, beta != 0.0 and beta != 1.0
+# 3. alpha != 1.0, beta = 0.0
+# 4. alpha != 1.0, beta = 1.0
+# 5. alpha != 1.0, beta != 0.0 and beta != 1.0
 kernels.append(generator.DenseKernel("sme_base_test1", 8, 8, 8, 8, 8, 8, 1.0, 0.0, [x.getBlocksize(8, 8, v_size, v_size) for x in blocksize_algs], delta_dp))
 kernels.append(generator.DenseKernel("sme_base_test2", 8, 8, 8, 8, 8, 8, 1.0, 2.0, [x.getBlocksize(8, 8, v_size, v_size) for x in blocksize_algs], delta_dp))
 kernels.append(generator.DenseKernel("sme_base_test3", 8, 8, 8, 8, 8, 8, 2.0, 0.0, [x.getBlocksize(8, 8, v_size, v_size) for x in blocksize_algs], delta_dp))
-kernels.append(generator.DenseKernel("sme_base_test4", 8, 8, 8, 8, 8, 8, 2.0, 2.0, [x.getBlocksize(8, 8, v_size, v_size) for x in blocksize_algs], delta_dp))
+kernels.append(generator.DenseKernel("sme_base_test4", 8, 8, 8, 8, 8, 8, 2.0, 1.0, [x.getBlocksize(8, 8, v_size, v_size) for x in blocksize_algs], delta_dp))
+kernels.append(generator.DenseKernel("sme_base_test5", 8, 8, 8, 8, 8, 8, 2.0, 2.0, [x.getBlocksize(8, 8, v_size, v_size) for x in blocksize_algs], delta_dp))
 
-kernels.append(generator.DenseKernel("sme_base_test5", 16, 16, 16, 16, 16, 16, 1.0, 0.0, [x.getBlocksize(8, 8, v_size, v_size) for x in blocksize_algs], delta_dp))
+kernels.append(generator.DenseKernel("sme_base_test6", 16, 16, 16, 16, 16, 16, 1.0, 0.0, [x.getBlocksize(8, 8, v_size, v_size) for x in blocksize_algs], delta_dp))
+kernels.append(generator.DenseKernel("sme_base_test7", 16, 16, 16, 16, 16, 16, 1.0, 2.0, [x.getBlocksize(8, 8, v_size, v_size) for x in blocksize_algs], delta_dp))
+kernels.append(generator.DenseKernel("sme_base_test8", 16, 16, 16, 16, 16, 16, 2.0, 0.0, [x.getBlocksize(8, 8, v_size, v_size) for x in blocksize_algs], delta_dp))
+kernels.append(generator.DenseKernel("sme_base_test9", 16, 16, 16, 16, 16, 16, 2.0, 1.0, [x.getBlocksize(8, 8, v_size, v_size) for x in blocksize_algs], delta_dp))
+kernels.append(generator.DenseKernel("sme_base_test10", 16, 16, 16, 16, 16, 16, 2.0, 2.0, [x.getBlocksize(8, 8, v_size, v_size) for x in blocksize_algs], delta_dp))
+
+kernels.append(generator.DenseKernel("sme_base_test11", 64, 64, 64, 64, 64, 64, 1.0, 0.0, [x.getBlocksize(8, 8, v_size, v_size) for x in blocksize_algs], delta_dp))
+kernels.append(generator.DenseKernel("sme_base_test12", 64, 64, 64, 64, 64, 64, 1.0, 2.0, [x.getBlocksize(8, 8, v_size, v_size) for x in blocksize_algs], delta_dp))
+kernels.append(generator.DenseKernel("sme_base_test13", 64, 64, 64, 64, 64, 64, 2.0, 0.0, [x.getBlocksize(8, 8, v_size, v_size) for x in blocksize_algs], delta_dp))
+kernels.append(generator.DenseKernel("sme_base_test14", 64, 64, 64, 64, 64, 64, 2.0, 1.0, [x.getBlocksize(8, 8, v_size, v_size) for x in blocksize_algs], delta_dp))
+kernels.append(generator.DenseKernel("sme_base_test15", 64, 64, 64, 64, 64, 64, 2.0, 2.0, [x.getBlocksize(8, 8, v_size, v_size) for x in blocksize_algs], delta_dp))
+
+kernels.append(generator.DenseKernel("sme_base_test16", 64, 64, 16, 64, 64, 64, 1.0, 0.0, [x.getBlocksize(8, 8, v_size, v_size) for x in blocksize_algs], delta_dp))
+kernels.append(generator.DenseKernel("sme_base_test17", 64, 64, 16, 64, 64, 64, 1.0, 2.0, [x.getBlocksize(8, 8, v_size, v_size) for x in blocksize_algs], delta_dp))
+kernels.append(generator.DenseKernel("sme_base_test18", 64, 64, 16, 64, 64, 64, 2.0, 0.0, [x.getBlocksize(8, 8, v_size, v_size) for x in blocksize_algs], delta_dp))
+kernels.append(generator.DenseKernel("sme_base_test19", 64, 64, 16, 64, 64, 64, 2.0, 1.0, [x.getBlocksize(8, 8, v_size, v_size) for x in blocksize_algs], delta_dp))
+kernels.append(generator.DenseKernel("sme_base_test20", 64, 64, 16, 64, 64, 64, 2.0, 2.0, [x.getBlocksize(8, 8, v_size, v_size) for x in blocksize_algs], delta_dp))
+
+kernels.append(generator.DenseKernel("sme_base_test21", 192, 192, 192, 192, 192, 192, 1.0, 0.0, [x.getBlocksize(8, 8, v_size, v_size) for x in blocksize_algs], delta_dp))
+kernels.append(generator.DenseKernel("sme_base_test22", 192, 192, 192, 192, 192, 192, 1.0, 2.0, [x.getBlocksize(8, 8, v_size, v_size) for x in blocksize_algs], delta_dp))
+kernels.append(generator.DenseKernel("sme_base_test23", 192, 192, 192, 192, 192, 192, 2.0, 0.0, [x.getBlocksize(8, 8, v_size, v_size) for x in blocksize_algs], delta_dp))
+kernels.append(generator.DenseKernel("sme_base_test24", 192, 192, 192, 192, 192, 192, 2.0, 1.0, [x.getBlocksize(8, 8, v_size, v_size) for x in blocksize_algs], delta_dp))
+kernels.append(generator.DenseKernel("sme_base_test25", 192, 192, 192, 192, 192, 192, 2.0, 2.0, [x.getBlocksize(8, 8, v_size, v_size) for x in blocksize_algs], delta_dp))
+"""
+kernels.append(generator.SparseKernel("sme_sparse_test1", 8, 8, 8, 8, 0, 8, 1.0, 0.0, [x.getBlocksize(8, 8, v_size, v_size) for x in blocksize_algs], generator.generateMTX(8, 8, 1), delta_dp))
 
 # kernels.append(generator.DenseKernel("sme_mixed_test1", 8, 8, 8, 8, 8, 8, 1.0, 0.0, [x.getBlocksize(4, 4, v_size, v_size) for x in blocksize_algs], delta_dp))
 

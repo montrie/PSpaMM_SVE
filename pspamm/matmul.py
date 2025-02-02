@@ -234,6 +234,9 @@ class MatMul:
         C_ptr = CursorLocation()
         C_pf_ptr = CursorLocation()
 
+#        if self.is_sme:
+#            B_ptr.absolute = True
+
         Bn = self.n // self.bn
         Bk = self.k // self.bk
         # handle fringe case of SVE -> allow bm < v_size
@@ -261,26 +264,25 @@ class MatMul:
                 if self.beta != 1.0:
                     if self.use_bcst:
                         asm.add(bcst(self.beta_bcst_reg, self.beta_reg[1], "Broadcast beta"))
-                        print("A regs shape:")
-                        print(self.A_regs.shape)
-                        print("B regs shape:")
-                        print(self.B_regs.shape)
-                        print("C regs shape:")
-                        print(regs.shape)
+#                        print("A regs shape:")
+#                        print(self.A_regs.shape)
+#                        print("B regs shape:")
+#                        print(self.B_regs.shape)
+#                        print("C regs shape:")
+#                        print(regs.shape)
                     for ic in range(regs.shape[1]):
                         for ir in range(regs.shape[0]):
-                            #TODO: added bool parameters (False) to function call, switched parameter positioning and removed bool param. such that SVE impl. doesnt break
                             pred_m = None if not self.is_sve else self.generator.pred_n_trues(self.bm - ir * self.v_size, self.v_size, "m")
                             # TODO: is there a better way to handle SME not allowing multiplication of ZA rows with vector registers?
                             if self.is_sme:
                                 #TODO: add MOV of ZA row to vector register, use A_regs as intermediate registers to perform multiplication, there should be enough of them
-                                print(self.A_regs)
-                                print("\n")
-                                print(self.B_regs)
-                                print("\n")
-                                print(self.C_regs)
-                                print("\n")
-                                print(pred_m.value)
+#                                print(self.A_regs)
+#                                print("\n")
+#                                print(self.B_regs)
+#                                print("\n")
+#                                print(self.C_regs)
+#                                print("\n")
+#                                print(pred_m.value)
 
                                 asm.add(mov(regs[ir,ic], self.A_regs[ir,ic], True, "move ZA row to vector register", pred=pred_m))
                                 asm.add(mul(self.A_regs[ir,ic], self.beta_reg[1], self.A_regs[ir,ic], "C = beta * C", pred=pred_m))
@@ -295,8 +297,11 @@ class MatMul:
             # than in other version where we used fmla
             for Bki in range(0,Bk):
 
-                to_A = Coords(right=Bki) #if not self.is_sme else Coords(right=)
-                to_B = Coords(right=Bni, down=Bki, absolute=True)
+                # TODO: this only works for cases where M = N
+                to_A = Coords(right=Bki) if not self.is_sme else Coords(right=Bki, down=Bni)
+                # TODO: line below is probably false, maybe change to absolute=False?
+                to_B = Coords(right=Bni, down=Bki, absolute=True) if not self.is_sme else Coords(right=Bki, absolute=True)
+                # to_B = Coords(right=Bni, down=Bki, absolute=True) #if not self.is_sme else Coords(right=Bni, down=Bki, absolute=False)
 
                 if self.B.has_nonzero_block(B_ptr, to_B):
                     asm.add(self.generator.make_microkernel(self.A, self.B, A_ptr, B_ptr, self.A_regs, self.B_regs, regs, self.v_size, self.additional_regs, to_A, to_B))
@@ -353,7 +358,7 @@ class MatMul:
                                         pass
                                 else:
                                     store_block.add(fma(regs[ir, x + ic], self.alpha_reg[1], A_regs_cut[ir, ic], "C = C + alpha * AB", False, pred=pred_m))
-                    if self.is_sme and self.beta != 0.0 and self.beta != 1.0:
+                    if self.is_sme and self.beta != 0.0: # and self.beta != 1.0:
                         A_regs_cut = regs[:,:]
                     store_block.add(self.generator.move_register_block(self.C, C_ptr, Coords(), A_regs_cut, self.v_size, self.additional_regs, None, True, self.prefetching, self.ldc * x))
                 asm.add(store_block)
@@ -388,7 +393,8 @@ class MatMul:
 
         loopBody = [
           self.make_nk_unroll(),
-          self.A.move(A_ptr, Coords(down=1))[0],
+          *([self.A.move(A_ptr, Coords(down=1))[0]] if not self.is_sme else []),
+          *([self.B.move(CursorLocation(), Coords(down=1))[0]] if self.is_sme and Bn > 1 else []),
           self.C.move(C_ptr, Coords(down=1, right=1-Bn))[0]
         ]
         if self.C_pf:

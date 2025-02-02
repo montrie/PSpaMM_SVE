@@ -297,7 +297,7 @@ void {funcName} (const {real_type}* A, const {real_type}* B, {real_type}* C, con
                         #     # TODO: might result in float value?
                         #     za_row = cont_counter #/ offs_threshold
                         #     asm.add(mov(za_row, za_reg.base, False))
-                        print(cursor.name)
+                        # print(cursor.name)
                         if is_za:
                             za_reg.offset %= offs_threshold
                         asm.add(st(registers[ir, ic], addr, True, comment, pred=p, scalar_offs=scalar_offs,
@@ -315,8 +315,13 @@ void {funcName} (const {real_type}* A, const {real_type}* B, {real_type}* C, con
                         if is_za:
                             za_reg.offset %= offs_threshold
                         else:
-                            if addr.ugly_base != "x2":
+                            # TODO: maybe remove second part of if clause again
+                            if addr.ugly_base != "x2" and cursor.name != "C": # and prev_base.clobbered != "x2":
                                 addr.disp //= self.precision.value
+                            # TODO: FOR NOW KEEP THE NEXT TWO LINES; MIGHT BE NEEDED LATER AFTER ALL
+                            # if addr.ugly_base == "x11" and cursor.name == "C":
+                            #     addr.disp *= self.precision.value
+
                             # we load elements of C into the ZA register
                             # if cont_counter % offs_threshold == 0:
                             #     za_row = cont_counter
@@ -389,7 +394,7 @@ void {funcName} (const {real_type}* A, const {real_type}* B, {real_type}* C, con
         max_mem_ins_mult = 7  # A64FX allows a maximum positive offset of 7 in memory instructions, e.g. ld1d z1.d, p0/z, [x0, 7, MUL VL] (TODO: tune, if ever different)
         max_offset = mul_vl * max_mem_ins_mult  # ld1d/st1d instruction encodes the immediate offset using 4 bits, multiplies it with MUL VL
         prev_disp = 0
-        prev_base = B.look(B_ptr, to_B_block, Coords(down=0, right=0))[0].base
+        prev_base = B.base_ptr #look(B_ptr, to_B_block, Coords(down=0, right=0))[0].base
         prev_overhead = True
 
         multiple = self.precision.value
@@ -415,13 +420,17 @@ void {funcName} (const {real_type}* A, const {real_type}* B, {real_type}* C, con
                     # to_cell = Coords(down=bki*v_size, right=Vni)
                     if B.has_nonzero_cell(B_ptr, to_B_block, to_cell):
                         B_cell_addr, B_comment = B.look(B_ptr, to_B_block, to_cell)
+                        if bki == 0:
+                            print(f"B_ptr={B_ptr}, to_B_block={to_B_block}, to_cell={to_cell}")
+                            print(f"B_cell_addr.disp={B_cell_addr.disp}")
                         if B_regs[bki, Vni] not in bs:
                             # max_offs is the maximum allowed immediate offset when using ld1rd/ld1rw to broadcast a scalar value
                             # TODO: swtich to processing vectors of B elements
 
                             # count how many elements we have processed between last step and this step
                             # TODO: defining prev_disp like this might be wrong, check if this works
-                            B_cell_addr.disp *= self.get_v_size() * (self.n // self.bn)
+                            B_cell_addr.disp += self.get_v_size() * (bki * self.n + Vni * self.k - bki)# self.get_v_size() * bki * self.n#(self.n // self.bn)
+                            print(f"B_cell_addr.disp={B_cell_addr.disp}")
                             cont_counter = ((B_cell_addr.disp - prev_disp) // mul_vl)
                             larger_max_offset = cont_counter > max_mem_ins_mult
 

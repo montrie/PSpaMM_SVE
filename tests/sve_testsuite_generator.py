@@ -80,7 +80,7 @@ def make(kernels, arch):
             subprocess.STDOUT for stderr
             """
             try:
-                subprocess.check_output(arguments + additional_args, stderr=sys.stderr, env={**os.environ, "DEBUG_SUBPROCESS": "1"})
+                subprocess.check_output(arguments + additional_args, stderr=sys.stderr, env={**os.environ, "delDEBUG_SUBPROCESS": "1"})
             except subprocess.CalledProcessError as e:
                 raise RuntimeError("command '{}' return with error (code {}): {}".format(e.cmd, e.returncode, e.output))
 
