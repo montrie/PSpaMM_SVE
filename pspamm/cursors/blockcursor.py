@@ -52,7 +52,8 @@ class BlockCursor(Cursor):
 
     def offset(self,
                src_loc: CursorLocation,
-               dest_loc: CursorLocation
+               dest_loc: CursorLocation,
+               vector: bool = False
               ) -> int:
 
         src_block = src_loc.current_block
@@ -73,15 +74,21 @@ class BlockCursor(Cursor):
         src_offset = self.offsets[src_cell.down, src_cell.right]
         dest_offset = self.offsets[dest_cell.down, dest_cell.right]
 
-        if (src_offset == -1 or dest_offset == -1):
-            raise Exception("Cursor location does not exist in memory!")
+        if vector:
+            if dest_offset == -1:
+                dest_offset = dest_cell.down + dest_cell.right * self.c
+            # dest_offset = dest_cell.down * self.r + dest_cell.right
+        else:
+            if (src_offset == -1 or dest_offset == -1):
+                raise Exception("Cursor location does not exist in memory!")
 
         return dest_offset
 
 
     def move(self,
              src_loc: CursorLocation,
-             dest_block: Coords
+             dest_block: Coords,
+             vector: bool = False
             ) -> Tuple[AsmStmt, CursorLocation]:
 
         comment = "Move {} to {}".format(self.name,str(dest_block))
@@ -91,7 +98,7 @@ class BlockCursor(Cursor):
         else:
             dest_loc = self.start_location(dest_block + src_loc.current_block)
 
-        offset_bytes = self.offset(src_loc, dest_loc) * self.scalar_bytes
+        offset_bytes = self.offset(src_loc, dest_loc, vector) * self.scalar_bytes
         
         return add(offset_bytes, self.base_ptr, comment), dest_loc
 
@@ -99,11 +106,12 @@ class BlockCursor(Cursor):
     def look(self,
              src_loc: CursorLocation,
              dest_block: Coords,
-             dest_cell: Coords
+             dest_cell: Coords,
+             vector: bool = False
             ) -> Tuple[MemoryAddress, str]:
 
         dest_loc = CursorLocation(dest_block, dest_cell)
-        offset_bytes = self.offset(src_loc, dest_loc) * self.scalar_bytes
+        offset_bytes = self.offset(src_loc, dest_loc, vector) * self.scalar_bytes
         comment = "{}[{},{}][{},{}]".format(self.name,dest_block.down,dest_block.right,dest_cell.down,dest_cell.right)
 
         addr = pspamm.architecture.operands.mem(self.base_ptr, offset_bytes)
@@ -151,6 +159,22 @@ class BlockCursor(Cursor):
 
         dest_cell += Coords(dest_block.down*self.br, dest_block.right*self.bc, True)
         return self.offsets[dest_cell.down, dest_cell.right] != -1
+    
+    def has_nonzero_vector(self,
+                           src_loc: CursorLocation,
+                           dest_block: Coords,
+                           dest_vec_start: Coords,
+                           v_size: int
+                           ) -> bool:
+        
+        assert(not dest_vec_start.absolute)
+        for i in range(v_size):
+            dest_cell = dest_vec_start + Coords(right=i)
+            if self.has_nonzero_cell(src_loc, dest_block, dest_cell):
+                return True
+        
+        return False
+
 
 
     def has_nonzero_block(self, src: CursorLocation, dest_block: Coords) -> bool:
@@ -194,10 +218,13 @@ def sparse_mask(A_regs: Matrix[Register],
            B_ptr: CursorLocation,
            B_block_offset: Coords,
            v_size: int,
-           is_sve: bool = False
+           is_sve: bool = False,
+           is_sme: bool = False
           ) -> Matrix[bool]:
 
     Vr, Vc = A_regs.shape
+    if is_sme:
+        Vr *= 2 # Useful for determining offsets and vector registers of A in generator.make_microkernel
     mask = Matrix.full(Vr, Vc, False)
     A_br, A_bc, A_idx, A_pat = A.get_block(A_ptr, A_block_offset)
     B_br, B_bc, B_idx, B_pat = B.get_block(B_ptr, B_block_offset)
@@ -206,6 +233,14 @@ def sparse_mask(A_regs: Matrix[Register],
         assert (Vr * v_size == A_br)    # bm must tile m exactly for now in NEON and AVX512
     assert(Vc >= A_bc)                  # Matrix block must fit in register block
     assert(A_bc == B_br)                # Matrix blocks are compatible
+
+    if is_sme:
+        for Vci in range(A_bc):
+            if B_pat[:,Vci].any(axis=0):
+                mask[:Vr//2,Vci] = True
+            if B_pat[Vci,:].any(axis=1):
+                mask[Vr//2:,Vci] = True
+        return mask
 
     # Mask out registers not used in current block, including zero-rows of B
     for Vci in range(A_bc):

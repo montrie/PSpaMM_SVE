@@ -394,7 +394,7 @@ class MatMul:
         loopBody = [
           self.make_nk_unroll(),
           *([self.A.move(A_ptr, Coords(down=1))[0]] if not self.is_sme else []),
-          *([self.B.move(CursorLocation(), Coords(down=1))[0]] if self.is_sme and Bn > 1 else []),
+          *([self.B.move(CursorLocation(), Coords(down=1), vector=self.generator.is_sparse)[0]] if self.is_sme and Bn > 1 else []),
           self.C.move(C_ptr, Coords(down=1, right=1-Bn))[0]
         ]
         if self.C_pf:

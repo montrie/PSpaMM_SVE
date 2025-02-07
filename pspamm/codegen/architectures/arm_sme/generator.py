@@ -270,7 +270,7 @@ void {funcName} (const {real_type}* A, const {real_type}* B, {real_type}* C, con
                     p = self.pred_n_trues(num_elems, v_size, None, is_B)
                     p_zeroing = self.pred_n_trues(num_elems, v_size, "z", is_B)
 
-                    cell_offset = Coords(down=ir * v_size, right=ic)
+                    cell_offset = Coords(down=ir * v_size, right=ic) # TODO: switch down and right for A matrix?
 
                     # addr = base "pointer" + relative offset in bytes
                     addr, comment = cursor.look(cursor_ptr, block_offset, cell_offset)
@@ -379,7 +379,7 @@ void {funcName} (const {real_type}* A, const {real_type}* B, {real_type}* C, con
         bk, bn, bidx, bpattern = B.get_block(B_ptr, to_B_block)
 
         # tell sparse_mask() that we use sve
-        mask = sparse_mask(A_regs, A, A_ptr, to_A_block, B, B_ptr, to_B_block, v_size, is_sve=True)
+        mask = sparse_mask(A_regs, A, A_ptr, to_A_block, B, B_ptr, to_B_block, v_size, is_sve=True, is_sme=True)
         asm.add(self.move_register_block(A, A_ptr, to_A_block, A_regs, v_size, additional_regs, mask, store=False))
 
         # x = 0;
@@ -418,8 +418,15 @@ void {funcName} (const {real_type}* A, const {real_type}* B, {real_type}* C, con
                     p_zeroing = self.pred_n_trues(bn - Vni * v_size, v_size, "z", True)
                     to_cell = Coords(down=bki, right=Vni*v_size)
                     # to_cell = Coords(down=bki*v_size, right=Vni)
-                    if B.has_nonzero_cell(B_ptr, to_B_block, to_cell):
-                        B_cell_addr, B_comment = B.look(B_ptr, to_B_block, to_cell)
+                    # if B.has_nonzero_vector(B_ptr, to_B_block, to_cell, v_size):
+                    #if mask is None or mask[Vni, bki]:
+                    if self.is_sparse:
+                        cond = mask[Vni, bki]
+                    else:
+                        cond = B.has_nonzero_vector(B_ptr, to_B_block, to_cell, v_size)
+                        # cond = B.has_nonzero_cell(B_ptr, to_B_block, to_cell)
+                    if cond:
+                        B_cell_addr, B_comment = B.look(B_ptr, to_B_block, to_cell, vector=self.is_sparse)
                         if bki == 0:
                             print(f"B_ptr={B_ptr}, to_B_block={to_B_block}, to_cell={to_cell}")
                             print(f"B_cell_addr.disp={B_cell_addr.disp}")
@@ -429,7 +436,12 @@ void {funcName} (const {real_type}* A, const {real_type}* B, {real_type}* C, con
 
                             # count how many elements we have processed between last step and this step
                             # TODO: defining prev_disp like this might be wrong, check if this works
-                            B_cell_addr.disp += self.get_v_size() * (bki * self.n + Vni * self.k - bki)# self.get_v_size() * bki * self.n#(self.n // self.bn)
+                            if self.is_sparse:
+                                B_cell_addr.disp *= self.get_v_size()
+                            else:
+                                B_cell_addr.disp += self.get_v_size() * (bki * self.n + Vni * self.k - bki)# self.get_v_size() * bki * self.n#(self.n // self.bn) #TODO: change to multiplication with 8 or 16, idk if we need 16 or 4 for single prec 
+                                # B_cell_addr.disp *= self.get_v_size()
+
                             print(f"B_cell_addr.disp={B_cell_addr.disp}")
                             cont_counter = ((B_cell_addr.disp - prev_disp) // mul_vl)
                             larger_max_offset = cont_counter > max_mem_ins_mult
@@ -453,7 +465,6 @@ void {funcName} (const {real_type}* A, const {real_type}* B, {real_type}* C, con
                             B_cell_addr.base = prev_base
                             B_cell_addr.disp = ((B_cell_addr.disp - prev_disp) // mul_vl)
 
-                            # TODO: set is_B to False instead of is_B in order to use ld1d instead of ld1rd
                             asm.add(ld(B_cell_addr, B_regs[bki, Vni], True, B_comment, pred=p_zeroing, is_B=False))
                             bs.append(B_regs[bki, Vni])
                             prev_overhead = int(p_zeroing.ugly[1]) == 0  # determine if we previously used p0 (overhead predicate)
@@ -468,8 +479,15 @@ void {funcName} (const {real_type}* A, const {real_type}* B, {real_type}* C, con
                     # TODO: similar to p_merging, we probably need to define a Bn = max(self.ceil_div(bn, v_size), 1) and iterate using Bni
                     p_merging2 = self.pred_n_trues(bn - Vni * v_size, v_size, "m", True)
                     to_cell = Coords(down=bki, right=Vni*v_size)
-                    if B.has_nonzero_cell(B_ptr, to_B_block, to_cell):
-                        B_cell_addr, B_comment = B.look(B_ptr, to_B_block, to_cell)
+                    # if B.has_nonzero_vector(B_ptr, to_B_block, to_cell, v_size):
+                    # if mask is None or mask[Vni, bki]:
+                    if self.is_sparse:
+                        cond = mask[Vni, bki]
+                    else:
+                        cond = B.has_nonzero_vector(B_ptr, to_B_block, to_cell, v_size)
+                        # cond = B.has_nonzero_cell(B_ptr, to_B_block, to_cell)
+                    if cond:
+                        B_cell_addr, B_comment = B.look(B_ptr, to_B_block, to_cell, vector=self.is_sparse)
                         comment = "C[{}:{},{}] += A[{}:{},{}]*{}".format(Vmi * v_size, end_index, Vni * v_size, Vmi * v_size,
                                                                          end_index, bki, B_comment)
                         asm.add(fmopa(C_regs[Vmi, Vni], A_regs[Vmi, bki], B_regs[bki, Vni], pred=p_merging, pred2=p_merging2, comment=comment))

@@ -128,28 +128,30 @@ def make(kernels, arch):
 
             if isinstance(kern, SparseKernel) or isinstance(kern, SparseKernelS):
                 mtx = kern.mtx
+                print(os.path.abspath(mtx))
             else:
                 mtx = ""
             # for double precision: set prec to '' to conform to test_generator.function_definitions
             prec = 'f' if isinstance(kern, SparseKernelS) or isinstance(kern, DenseKernelS) else ''
+            sparse = isinstance(kern, SparseKernel) or isinstance(kern, SparseKernelS)
 
             f.write("""
   {p}alpha = {alpha}; {p}beta = {beta}; ldb = {ldb};
   {p}pointers = pre<{T}>({m}, {n}, {k}, {lda}, ldb, {ldc}, "{mtx}");
-  posix_memalign(reinterpret_cast<void **>(&Atrans), 64, {lda}*{ldb}*sizeof({T}));
-  transpose_matrix(std::get<0>({p}pointers), {p}Atrans, {lda}, {ldb});
-  // printf("\\n");
-  // pretty_print({m}, {k}, {lda}, std::get<0>{p}(pointers));
-  // printf("\\n");
-  // pretty_print({k},{m}, {lda}, Atrans);
-  // printf("\\n");
+  posix_memalign(reinterpret_cast<void **>(&Atrans), 64, {lda}*{ldbsparse}*sizeof({T}));
+  transpose_matrix(std::get<0>({p}pointers), {p}Atrans, {lda}, {ldbsparse});
+  //printf("A:\\n");
+  //pretty_print({m}, {k}, {lda}, std::get<0>{p}(pointers));
+  //printf("Atrans:\\n");
+  //pretty_print({k},{m}, {lda}, Atrans);
+  //printf("\\n");
   setup_prefetch({p}prefetch, std::get<3>({p}pointers), {n}, {ldc});
   {name}({A}, std::get<{sparse}>({p}pointers), std::get<3>({p}pointers), {p}alpha, {p}beta, {p}prefetch);
   result = post<{T}>({m}, {n}, {k}, {lda}, &ldb, {ldc}, &{p}alpha, &{p}beta, std::get<0>({p}pointers), std::get<1>({p}pointers), std::get<3>({p}pointers), std::get<4>({p}pointers), {delta:.7f});
   results.push_back(std::make_tuple("{name}", result));
   free(std::get<0>({p}pointers)); free(std::get<1>({p}pointers)); free(std::get<2>({p}pointers)); free(std::get<3>({p}pointers)); free(std::get<4>({p}pointers)); free({p}prefetch); free({p}Atrans);
-""".format(m=kern.m, n=kern.n, k=kern.k, lda=kern.lda, ldb=kern.ldb, ldc=kern.ldc, alpha=kern.alpha, beta=kern.beta,
-           mtx=mtx, delta=kern.delta, name=name, sparse=2 if kern.ldb == 0 else 1, A="Atrans" if arch.startswith("arm_sme") else "std::get<0>({p}pointers)".format(p=prec), 
+""".format(m=kern.m, n=kern.n, k=kern.k, lda=kern.lda, ldb=kern.ldb, ldbsparse=kern.k if sparse else kern.ldb, ldc=kern.ldc, alpha=kern.alpha, beta=kern.beta,
+           mtx=mtx, delta=kern.delta, name=name, sparse=2 if kern.ldb == 0 and arch[:7] == "arm_sve" else 1, A="Atrans" if arch.startswith("arm_sme") else "std::get<0>({p}pointers)".format(p=prec), 
            p=prec, T="float" if prec == 'f' else "double"))
 
     f.write(test_generator.end_of_testsuite)

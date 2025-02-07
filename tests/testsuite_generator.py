@@ -154,6 +154,13 @@ std::tuple<T*, T*, T*, T*, T*> pre(unsigned M, unsigned N, unsigned K, unsigned 
 
   f.close();
 
+  //printf("A:\\n");
+  //pretty_print(M, K, LDA, A);
+  //printf("B:\\n");
+  //pretty_print(K, N, LDB, B);
+  //printf("Bsparse:\\n");
+  //pretty_print(K, N, LDB, Bsparse);
+
   return std::make_tuple(A, B, Bsparse, C, Cref);
 }
 
@@ -163,13 +170,13 @@ int post(unsigned M, unsigned N, unsigned K, unsigned LDA, unsigned* LDB, unsign
   if(*LDB == 0)
     *LDB = K;
 
-  printf("GEMM result:\\n");
-  pretty_print(M, N, LDC, C);
+  //printf("GEMM result:\\n");
+  //pretty_print(M, N, LDC, C);
 
   gemm_ref(M, N, K, LDA, *LDB, LDC, *ALPHA, *BETA, A, B, Cref);
 
-  printf("\\nReference:\\n");
-  pretty_print(M, N, LDC, Cref);
+  //printf("\\nReference:\\n");
+  //pretty_print(M, N, LDC, Cref);
     
   for(int i = 0; i < M; i++) {
     for(int j = 0; j < N; j++) {
@@ -235,6 +242,7 @@ def generateMTX(k, n, nnz):
     os.makedirs(os.path.join(BASEDIR, 'mtx'), exist_ok=True)
 
     filename = os.path.join(BASEDIR, 'mtx', str(k) + 'x' + str(n) + '_' + str(nnz) + '.mtx')
+    print(os.path.abspath(filename))
 
     if os.path.isfile(filename):
         return filename
