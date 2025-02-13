@@ -36,12 +36,13 @@ class BlockCursor(Cursor):
         self.patterns = patterns
 
         self.offsets = Matrix.full(rows, cols, -1)
+        #TODO: we might need to change the order in which we create the offsets matrix
         x = 0
         for i in range(self.c):
             for j in range(self.r):
                 Bci = i // self.bc
                 Bri = j // self.br
-                index = cast(int, blocks[Bri, Bci])
+                index = cast(int, blocks[Bri, Bci])  # TODO: was Bri, Bci before
                 pattern = patterns[index]   
                 if pattern[j % self.br,i % self.bc]:
                     self.offsets[j, i] = x
@@ -75,8 +76,12 @@ class BlockCursor(Cursor):
         dest_offset = self.offsets[dest_cell.down, dest_cell.right]
 
         if vector:
-            if dest_offset == -1:
-                dest_offset = dest_cell.down + dest_cell.right * self.c
+            # if dest_offset == -1:
+            # TODO: is it right * columns or right * rows? it SHOULD be *rows right?
+            # dest_offset = dest_cell.down + dest_cell.right * self.c
+            dest_offset = dest_cell.down + dest_cell.right * self.r
+            # TODO: instead of above, switch the indices:
+            dest_offset = dest_cell.right + dest_cell.down * self.c
             # dest_offset = dest_cell.down * self.r + dest_cell.right
         else:
             if (src_offset == -1 or dest_offset == -1):
@@ -140,7 +145,7 @@ class BlockCursor(Cursor):
 
         br = self.br if block_abs.down < self.Br else self.brf   #TODO: Verify these
         bc = self.bc if block_abs.right < self.Bc else self.bcf
-        index = self.blocks[block_abs.down, block_abs.right]
+        index = self.blocks[block_abs.down, block_abs.right] #TODO: was down, right before
         index = cast(int, index)  # TODO: Overload functions correctly
         pattern = self.patterns[index][0:br, 0:bc]
         pattern = cast(Matrix[bool], pattern)

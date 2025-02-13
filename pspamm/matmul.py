@@ -22,7 +22,7 @@ import time
 import sys
 
 
-def decompose_pattern(k, n, pattern:Matrix[bool], bk:int, bn:int) -> Tuple[Matrix[int], List[Matrix[bool]]]:
+def decompose_pattern(k, n, pattern:Matrix[bool], bk:int, bn:int, is_sme:bool) -> Tuple[Matrix[int], List[Matrix[bool]]]:
     Bk,Bn = k//bk, n//bn
     patterns = []
     x = 0
@@ -35,22 +35,33 @@ def decompose_pattern(k, n, pattern:Matrix[bool], bk:int, bn:int) -> Tuple[Matri
     if k_overhead > 0:
         Bk += 1
 
-    blocks = Matrix.full(Bk,Bn,-1)
+    blocks = Matrix.full(Bk,Bn,-1)# if not is_sme else Matrix.full(Bn,Bk,-1)
 
-    for Bni in range(Bn):
-        for Bki in range(Bk):
-            if Bni + 1 == Bn and n_overhead > 0 and Bki + 1 == Bk and k_overhead > 0:
-                block = pattern[(Bki*bk):((Bki+1)*bk+k_overhead), (Bni*bn):((Bni)*bn+n_overhead)]
-            elif Bni + 1 == Bn and n_overhead > 0:
-                block = pattern[(Bki*bk):((Bki+1)*bk), (Bni*bn):((Bni)*bn+n_overhead)]
-            elif Bki + 1 == Bk and k_overhead > 0:
-                block = pattern[(Bki*bk):((Bki+1)*bk+k_overhead), (Bni*bn):((Bni+1)*bn)]
-            else:
+    if is_sme:
+        # TODO: for now we just copy the else part from below, we don't have overheads using SME
+        for Bni in range(Bn):
+            for Bki in range(Bk):
                 block = pattern[(Bki*bk):((Bki+1)*bk), (Bni*bn):((Bni+1)*bn)]
-            
-            blocks[Bki,Bni] = x
-            x += 1
-            patterns.append(block)
+                # block = pattern[(Bni*bn):((Bni+1)*bn), (Bki*bk):((Bki+1)*bk)]
+                blocks[Bki,Bni] = x
+                x += 1
+                patterns.append(block)
+
+    else:
+        for Bni in range(Bn):
+            for Bki in range(Bk):
+                if Bni + 1 == Bn and n_overhead > 0 and Bki + 1 == Bk and k_overhead > 0:
+                    block = pattern[(Bki*bk):((Bki+1)*bk+k_overhead), (Bni*bn):((Bni)*bn+n_overhead)]
+                elif Bni + 1 == Bn and n_overhead > 0:
+                    block = pattern[(Bki*bk):((Bki+1)*bk), (Bni*bn):((Bni)*bn+n_overhead)]
+                elif Bki + 1 == Bk and k_overhead > 0:
+                    block = pattern[(Bki*bk):((Bki+1)*bk+k_overhead), (Bni*bn):((Bni+1)*bn)]
+                else:
+                    block = pattern[(Bki*bk):((Bki+1)*bk), (Bni*bn):((Bni+1)*bn)]
+                
+                blocks[Bki,Bni] = x
+                x += 1
+                patterns.append(block)
 
     mtx_overhead = [0] * n
 
@@ -189,7 +200,7 @@ class MatMul:
                     mtx[i, j] = 1
             pattern = Matrix(mtx)
 
-        blocks,patterns,mtx_overhead = decompose_pattern(self.k, self.n, pattern, self.bk, self.bn)
+        blocks,patterns,mtx_overhead = decompose_pattern(self.k, self.n, pattern, self.bk, self.bn, self.is_sme)
 
         self.nnz = 0
         self.flop = 0
@@ -233,9 +244,6 @@ class MatMul:
         B_ptr = self.B.start()
         C_ptr = CursorLocation()
         C_pf_ptr = CursorLocation()
-
-#        if self.is_sme:
-#            B_ptr.absolute = True
 
         Bn = self.n // self.bn
         Bk = self.k // self.bk
@@ -298,9 +306,9 @@ class MatMul:
             for Bki in range(0,Bk):
 
                 # TODO: this only works for cases where M = N
-                to_A = Coords(right=Bki) if not self.is_sme else Coords(right=Bki, down=Bni)
+                to_A = Coords(right=Bki) if not self.is_sme else Coords(right=Bki) # Coords(right=Bki, down=Bni)
                 # TODO: line below is probably false, maybe change to absolute=False?
-                to_B = Coords(right=Bni, down=Bki, absolute=True) if not self.is_sme else Coords(right=Bki, absolute=True)
+                to_B = Coords(right=Bni, down=Bki, absolute=True)# if not self.is_sme else Coords(right=Bki, down=Bni, absolute=True)# Coords(right=Bki, absolute=True)
                 # to_B = Coords(right=Bni, down=Bki, absolute=True) #if not self.is_sme else Coords(right=Bni, down=Bki, absolute=False)
 
                 if self.B.has_nonzero_block(B_ptr, to_B):
@@ -367,7 +375,8 @@ class MatMul:
                 asm.add(self.generator.move_register_block(self.C, C_ptr, Coords(), regs, self.v_size, self.additional_regs, None, True, self.prefetching))
 
             if (Bni != Bn-1):
-                move_C, C_ptr = self.C.move(C_ptr, Coords(right=1))
+                # move_coords = Coords(right=1) if not self.is_sme else Coords(down=1)
+                move_C, C_ptr = self.C.move(C_ptr, Coords(right=1)) if not self.is_sme else self.C.move(C_ptr, Coords(down=1))
                 asm.add(move_C)
                 if self.C_pf:
                   move_C_pf, C_pf_ptr = self.C_pf.move(C_pf_ptr, Coords(right=1))
@@ -393,9 +402,11 @@ class MatMul:
 
         loopBody = [
           self.make_nk_unroll(),
-          *([self.A.move(A_ptr, Coords(down=1))[0]] if not self.is_sme else []),
-          *([self.B.move(CursorLocation(), Coords(down=1), vector=self.generator.is_sparse)[0]] if self.is_sme and Bn > 1 else []),
-          self.C.move(C_ptr, Coords(down=1, right=1-Bn))[0]
+        #   *([self.A.move(A_ptr, Coords(down=1))[0]] if not self.is_sme else []),
+          *([self.A.move(A_ptr, Coords(down=1))[0]] if not self.is_sme else [self.A.move(A_ptr, Coords(down=1))[0]]),
+        #   *([self.B.move(CursorLocation(), Coords(down=1), vector=self.generator.is_sparse)[0]] if self.is_sme and Bn > 1 else []),
+        #   self.C.move(C_ptr, Coords(down=1, right=1-Bn))[0]
+          *([self.C.move(C_ptr, Coords(down=1, right=1-Bn))[0]] if not self.is_sme else [self.C.move(C_ptr, Coords(down=1-Bn, right=1))[0]])
         ]
         if self.C_pf:
           loopBody.append(self.C_pf.move(C_pf_ptr, Coords(down=1, right=1-Bn))[0])

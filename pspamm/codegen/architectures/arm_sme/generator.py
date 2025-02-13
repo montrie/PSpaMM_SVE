@@ -258,7 +258,7 @@ void {funcName} (const {real_type}* A, const {real_type}* B, {real_type}* C, con
 
         for ic in range(cols):
             for ir in range(rows):
-                if (mask is None) or (mask[ir, ic]):
+                if (mask is None) or (mask[ir, ic]): # TODO: switch to addressing row ir * 2 + 1
                     processed = ir * v_size
                     za_reg = registers[ir, ic] if is_za else None
                     # TODO: delete?
@@ -379,7 +379,11 @@ void {funcName} (const {real_type}* A, const {real_type}* B, {real_type}* C, con
         bk, bn, bidx, bpattern = B.get_block(B_ptr, to_B_block)
 
         # tell sparse_mask() that we use sve
-        mask = sparse_mask(A_regs, A, A_ptr, to_A_block, B, B_ptr, to_B_block, v_size, is_sve=True, is_sme=True)
+        # TODO: explain why this is necessary!
+        fixed_to_B_block = to_B_block
+        if self.is_sparse and self.k == self.n:
+            fixed_to_B_block = Coords(down=to_B_block.right, right=to_B_block.down, absolute=to_B_block.absolute)
+        mask = sparse_mask(A_regs, A, A_ptr, to_A_block, B, B_ptr, fixed_to_B_block, v_size, is_sve=True, is_sme=True)
         asm.add(self.move_register_block(A, A_ptr, to_A_block, A_regs, v_size, additional_regs, mask, store=False))
 
         # x = 0;
@@ -421,12 +425,12 @@ void {funcName} (const {real_type}* A, const {real_type}* B, {real_type}* C, con
                     # if B.has_nonzero_vector(B_ptr, to_B_block, to_cell, v_size):
                     #if mask is None or mask[Vni, bki]:
                     if self.is_sparse:
-                        cond = mask[Vni, bki]
+                        cond = mask[Vni, bki] # TODO: switch to addressing row ir * 2 + 1
                     else:
                         cond = B.has_nonzero_vector(B_ptr, to_B_block, to_cell, v_size)
                         # cond = B.has_nonzero_cell(B_ptr, to_B_block, to_cell)
                     if cond:
-                        B_cell_addr, B_comment = B.look(B_ptr, to_B_block, to_cell, vector=self.is_sparse)
+                        B_cell_addr, B_comment = B.look(B_ptr, to_B_block, to_cell, vector=True)#self.is_sparse)
                         if bki == 0:
                             print(f"B_ptr={B_ptr}, to_B_block={to_B_block}, to_cell={to_cell}")
                             print(f"B_cell_addr.disp={B_cell_addr.disp}")
@@ -437,10 +441,12 @@ void {funcName} (const {real_type}* A, const {real_type}* B, {real_type}* C, con
                             # count how many elements we have processed between last step and this step
                             # TODO: defining prev_disp like this might be wrong, check if this works
                             if self.is_sparse:
-                                B_cell_addr.disp *= self.get_v_size()
-                            else:
-                                B_cell_addr.disp += self.get_v_size() * (bki * self.n + Vni * self.k - bki)# self.get_v_size() * bki * self.n#(self.n // self.bn) #TODO: change to multiplication with 8 or 16, idk if we need 16 or 4 for single prec 
                                 # B_cell_addr.disp *= self.get_v_size()
+                                pass
+                            else:
+                                # B_cell_addr.disp += self.get_v_size() * (bki * self.n + Vni * self.k - bki)# self.get_v_size() * bki * self.n#(self.n // self.bn) #TODO: change to multiplication with 8 or 16, idk if we need 16 or 4 for single prec 
+                                # B_cell_addr.disp *= self.get_v_size()
+                                pass
 
                             print(f"B_cell_addr.disp={B_cell_addr.disp}")
                             cont_counter = ((B_cell_addr.disp - prev_disp) // mul_vl)
@@ -482,7 +488,7 @@ void {funcName} (const {real_type}* A, const {real_type}* B, {real_type}* C, con
                     # if B.has_nonzero_vector(B_ptr, to_B_block, to_cell, v_size):
                     # if mask is None or mask[Vni, bki]:
                     if self.is_sparse:
-                        cond = mask[Vni, bki]
+                        cond = mask[Vni, bki] # TODO: switch to addressing row ir * 2 + 1
                     else:
                         cond = B.has_nonzero_vector(B_ptr, to_B_block, to_cell, v_size)
                         # cond = B.has_nonzero_cell(B_ptr, to_B_block, to_cell)
