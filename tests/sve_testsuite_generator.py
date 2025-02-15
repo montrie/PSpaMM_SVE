@@ -141,9 +141,9 @@ def make(kernels, arch):
   posix_memalign(reinterpret_cast<void **>(&Atrans), 64, {lda}*{ldbsparse}*sizeof({T}));
   transpose_matrix(std::get<0>({p}pointers), {p}Atrans, {lda}, {ldbsparse});
   //printf("A:\\n");
-  //pretty_print({m}, {k}, {lda}, std::get<0>{p}(pointers));
+  //pretty_print({m}, {k}, {ldbsparse}, std::get<0>{p}(pointers));
   //printf("Atrans:\\n");
-  //pretty_print({k},{m}, {lda}, Atrans);
+  //pretty_print({k}, {m}, {lda}, Atrans);
   //printf("\\n");
   setup_prefetch({p}prefetch, std::get<3>({p}pointers), {n}, {ldc});
   {name}({A}, std::get<{sparse}>({p}pointers), std::get<3>({p}pointers), {p}alpha, {p}beta, {p}prefetch);
