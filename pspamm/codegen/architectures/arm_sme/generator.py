@@ -266,7 +266,7 @@ void {funcName} (const {real_type}* A, const {real_type}* B, {real_type}* C, con
                     # p_zeroing = self.pred_n_trues(b_row - processed, v_size, "z", False) if not is_B else self.pred_n_trues(v_size, v_size, "z", True)
 
                     # setup predicate registers
-                    num_elems = v_size if is_B else b_row - processed
+                    num_elems = v_size #if is_B else b_row - processed
                     p = self.pred_n_trues(num_elems, v_size, None, is_B)
                     p_zeroing = self.pred_n_trues(num_elems, v_size, "z", is_B)
 
