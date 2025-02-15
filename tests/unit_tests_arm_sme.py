@@ -66,7 +66,8 @@ delta_dp = 1e-7 # epsilon is around e-15 => /2
 # kernels.append(generator.SparseKernel("sme_sparse_test4", 8, 8, 8, 8, 0, 8, 2.0, 1.0, [x.getBlocksize(8, 8, v_size, v_size) for x in blocksize_algs], generator.generateMTX(8, 8, 8), delta_dp))
 # kernels.append(generator.SparseKernel("sme_sparse_test5", 8, 8, 8, 8, 0, 8, 2.0, 2.0, [x.getBlocksize(8, 8, v_size, v_size) for x in blocksize_algs], generator.generateMTX(8, 8, 37), delta_dp))
 
-# kernels.append(generator.SparseKernel("sme_sparse_test6", 16, 16, 16, 16, 0, 16, 1.0, 0.0, [x.getBlocksize(8, 8, v_size, v_size) for x in blocksize_algs], generator.generateMTX(16, 16, 25), delta_dp))
+kernels.append(generator.DenseKernel("sme_comp_test1", 8, 16, 16, 8, 16, 16, 1.0, 0.0, [x.getBlocksize(8, 8, v_size, v_size) for x in blocksize_algs], delta_dp))
+kernels.append(generator.SparseKernel("sme_sparse_test6", 16, 16, 16, 16, 0, 16, 1.0, 0.0, [x.getBlocksize(8, 8, v_size, v_size) for x in blocksize_algs], generator.generateMTX(16, 16, 25), delta_dp))
 # kernels.append(generator.SparseKernel("sme_sparse_test6_5", 16, 16, 8, 16, 0, 16, 1.0, 0.0, [x.getBlocksize(8, 8, v_size, v_size) for x in blocksize_algs], generator.generateMTX(8, 16, 12), delta_dp))
 # kernels.append(generator.SparseKernel("sme_sparse_test7", 16, 16, 16, 16, 0, 16, 1.0, 2.0, [x.getBlocksize(8, 8, v_size, v_size) for x in blocksize_algs], generator.generateMTX(16, 16, 25), delta_dp))
 # kernels.append(generator.SparseKernel("sme_sparse_test8", 16, 16, 16, 16, 0, 16, 2.0, 0.0, [x.getBlocksize(8, 8, v_size, v_size) for x in blocksize_algs], generator.generateMTX(16, 16, 25), delta_dp))
