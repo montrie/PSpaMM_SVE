@@ -39,7 +39,7 @@ template <typename T>
 void check_transposition(T* M, T* Mtrans, int rows, int cols) {
   for (int i = 0; i < rows; i++) {
     for (int j = 0; j < cols; j++) {
-      if (Mtrans[j * cols + i] != M[i * rows + j]) {
+      if (Mtrans[j * rows + i] != M[i * cols + j]) {
         std::cout << "elements for i=" << i << " and j=" << j << " are not equal" << std::endl;
       }
     }
@@ -50,7 +50,7 @@ template <typename T>
 void transpose_matrix(T* M, T* Mtrans, int rows, int cols) {
   for (int i = 0; i < rows; i++) {
     for (int j = 0; j < cols; j++) {
-      Mtrans[i + j * cols] = M[i * rows + j];
+      Mtrans[i + j * rows] = M[i * cols + j];
     }
   }
   check_transposition(M, Mtrans, rows, cols);
@@ -80,7 +80,7 @@ void gemm_ref(unsigned M, unsigned N, unsigned K, unsigned LDA, unsigned LDB, un
   for (unsigned row = 0; row < M; ++row) {
     for (unsigned col = 0; col < N; ++col) {
       for (unsigned k = 0; k < K; ++k) {
-        C[row * LDC + col] += ALPHA * A[row * LDA + k] * B[k * LDB + col];
+        C[row * LDC + col] += ALPHA * A[row * LDB + k] * B[k * LDC + col];
       }
     }
   }
@@ -155,11 +155,11 @@ std::tuple<T*, T*, T*, T*, T*> pre(unsigned M, unsigned N, unsigned K, unsigned 
   f.close();
 
   //printf("A:\\n");
-  //pretty_print(M, K, LDA, A);
+  //pretty_print(M, K, LDB, A);
   //printf("B:\\n");
-  //pretty_print(K, N, LDB, B);
+  //pretty_print(K, N, LDC, B);
   //printf("Bsparse:\\n");
-  //pretty_print(K, N, LDB, Bsparse);
+  //pretty_print(K, N, LDC, Bsparse);
 
   return std::make_tuple(A, B, Bsparse, C, Cref);
 }
