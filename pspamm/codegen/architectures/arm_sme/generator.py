@@ -195,6 +195,8 @@ void {funcName} (const {real_type}* A, const {real_type}* B, {real_type}* C, con
         overhead_bm = "\"mov {gen_reg}{overhead_counter}, #{overhead}{eol}\"\n\t\"whilelo p0.{suffix}, {gen_reg}zr, {gen_reg}{overhead_counter}{eol}\"\n\t" if bmmod != 0 else ""
         overhead_bn = "\"mov {gen_reg}{overhead_counter}, #{overhead}{eol}\"\n\t\"whilelo p1.{suffix}, {gen_reg}zr, {gen_reg}{overhead_counter}{eol}\"\n\t" if bnmod != 0 else ""
         all_true = "\"ptrue p7.{suffix}, #31{eol}\""  # define all true predicate
+        # all_true = "\"mov {gen_reg}{overhead_counter}, #{v_size}{eol}\"\n\t\"whilelo p7.{suffix}, {gen_reg}zr, {gen_reg}{overhead_counter}{eol}\"\n\t"  # initialize the first 8 elements of the predicate to be true
+                         # helpful since currently only blocks of size 8x8 are supported
         overhead = overhead_bm + overhead_bn          # define partial true predicates in M and N dimension
         init_registers = (comment + overhead + all_true).format(suffix=p_suffix,
                                                                 gen_reg=gen_reg,
