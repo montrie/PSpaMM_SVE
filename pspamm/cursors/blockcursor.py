@@ -239,13 +239,13 @@ def sparse_mask(A_regs: Matrix[Register],
     assert(Vc >= A_bc)                  # Matrix block must fit in register block
     assert(A_bc == B_br)                # Matrix blocks are compatible
 
-    if is_sme:
-        for Vci in range(A_bc):
-            if B_pat[:,Vci].any(axis=0):
-                mask[:Vr//2,Vci] = True
-            if B_pat[Vci,:].any(axis=1):
-                mask[Vr//2:,Vci] = True
-        return mask
+    # if is_sme:
+    #     for Vci in range(A_bc):
+    #         if B_pat[:,Vci].any(axis=0):
+    #             mask[:Vr//2,Vci] = True
+    #         if B_pat[Vci,:].any(axis=1):
+    #             mask[Vr//2:,Vci] = True
+    #     return mask
 
     # Mask out registers not used in current block, including zero-rows of B
     for Vci in range(A_bc):

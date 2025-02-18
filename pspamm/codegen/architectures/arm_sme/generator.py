@@ -258,7 +258,13 @@ void {funcName} (const {real_type}* A, const {real_type}* B, {real_type}* C, con
 
         for ic in range(cols):
             for ir in range(rows):
-                if (mask is None) or (mask[ir, ic]): # TODO: switch to addressing row ir * 2 + 1
+                # cond = (mask is None) or (mask[ir, ic])
+                # if self.k != self.n:
+                #     ir = ir * 2 + 1
+                cond = (mask is None) or (mask[ir, ic]) # TODO: switch to addressing row ir * 2 + 1
+                # if self.k != self.n:
+                #     ir = (ir - 1) // 2
+                if cond: # TODO: switch to addressing row ir * 2 + 1
                     processed = ir * v_size
                     za_reg = registers[ir, ic] if is_za else None
                     # TODO: delete?
@@ -381,8 +387,8 @@ void {funcName} (const {real_type}* A, const {real_type}* B, {real_type}* C, con
         # tell sparse_mask() that we use sve
         # TODO: explain why this is necessary!
         fixed_to_B_block = to_B_block
-        if self.is_sparse and self.k == self.n:
-            fixed_to_B_block = Coords(down=to_B_block.right, right=to_B_block.down, absolute=to_B_block.absolute)
+        # if self.is_sparse and self.k == self.n:
+        #     fixed_to_B_block = Coords(down=to_B_block.right, right=to_B_block.down, absolute=to_B_block.absolute)
         mask = sparse_mask(A_regs, A, A_ptr, to_A_block, B, B_ptr, fixed_to_B_block, v_size, is_sve=True, is_sme=True)
         asm.add(self.move_register_block(A, A_ptr, to_A_block, A_regs, v_size, additional_regs, mask, store=False))
 
@@ -425,7 +431,11 @@ void {funcName} (const {real_type}* A, const {real_type}* B, {real_type}* C, con
                     # if B.has_nonzero_vector(B_ptr, to_B_block, to_cell, v_size):
                     #if mask is None or mask[Vni, bki]:
                     if self.is_sparse:
+                        # if self.k != self.n:
+                        #     Vni = Vni * 2 + 1
                         cond = mask[Vni, bki] # TODO: switch to addressing row ir * 2 + 1
+                        # if self.k != self.n:
+                        #     Vni = (Vni -1) // 2
                     else:
                         cond = B.has_nonzero_vector(B_ptr, to_B_block, to_cell, v_size)
                         # cond = B.has_nonzero_cell(B_ptr, to_B_block, to_cell)
@@ -488,7 +498,11 @@ void {funcName} (const {real_type}* A, const {real_type}* B, {real_type}* C, con
                     # if B.has_nonzero_vector(B_ptr, to_B_block, to_cell, v_size):
                     # if mask is None or mask[Vni, bki]:
                     if self.is_sparse:
+                        # if self.k != self.n:
+                        #     Vni = Vni * 2 + 1
                         cond = mask[Vni, bki] # TODO: switch to addressing row ir * 2 + 1
+                        # if self.k != self.n:
+                        #     Vni = (Vni -1) // 2
                     else:
                         cond = B.has_nonzero_vector(B_ptr, to_B_block, to_cell, v_size)
                         # cond = B.has_nonzero_cell(B_ptr, to_B_block, to_cell)

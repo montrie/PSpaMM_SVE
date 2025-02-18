@@ -80,7 +80,7 @@ void gemm_ref(unsigned M, unsigned N, unsigned K, unsigned LDA, unsigned LDB, un
   for (unsigned row = 0; row < M; ++row) {
     for (unsigned col = 0; col < N; ++col) {
       for (unsigned k = 0; k < K; ++k) {
-        C[row * LDC + col] += ALPHA * A[row * LDB + k] * B[k * LDC + col];
+        C[row * LDC + col] += ALPHA * A[row * LDA + k] * B[k * LDB + col];
       }
     }
   }
@@ -88,7 +88,7 @@ void gemm_ref(unsigned M, unsigned N, unsigned K, unsigned LDA, unsigned LDB, un
 }
 
 template <typename T>
-std::tuple<T*, T*, T*, T*, T*> pre(unsigned M, unsigned N, unsigned K, unsigned LDA, unsigned LDB, unsigned LDC, std::string MTX) {
+std::tuple<T*, T*, T*, T*, T*> pre(unsigned M, unsigned N, unsigned K, unsigned LDA, unsigned LDB, unsigned LDC, std::string MTX, bool transpose = false) {
 
   if(LDB == 0)
     LDB = K;
@@ -133,8 +133,14 @@ std::tuple<T*, T*, T*, T*, T*> pre(unsigned M, unsigned N, unsigned K, unsigned 
       std::istringstream iss(line);
       for(std::string s; iss >> s; )
         result.push_back(s);
-      if(std::atoi(result[0].c_str()) <= K && std::atoi(result[1].c_str()) <= N)
-        B[std::atoi(result[0].c_str()) - 1 + LDB * (std::atoi(result[1].c_str()) - 1)] = std::stod(result[2]);
+      if(std::atoi(result[0].c_str()) <= K && std::atoi(result[1].c_str()) <= N) {
+        int index;
+        if(transpose)
+          index = LDC * (std::atoi(result[0].c_str()) - 1) + std::atoi(result[1].c_str()) - 1;
+        else
+          index = std::atoi(result[0].c_str()) - 1 + LDB * (std::atoi(result[1].c_str()) - 1);
+        B[index] = std::stod(result[2]);
+      }
     }
   }
 
@@ -170,13 +176,13 @@ int post(unsigned M, unsigned N, unsigned K, unsigned LDA, unsigned* LDB, unsign
   if(*LDB == 0)
     *LDB = K;
 
-  printf("GEMM result:\\n");
-  pretty_print(M, N, LDC, C);
+  //printf("GEMM result:\\n");
+  //pretty_print(M, N, LDC, C);
 
   gemm_ref(M, N, K, LDA, *LDB, LDC, *ALPHA, *BETA, A, B, Cref);
 
-  printf("\\nReference:\\n");
-  pretty_print(M, N, LDC, Cref);
+  //printf("\\nReference:\\n");
+  //pretty_print(M, N, LDC, Cref);
     
   for(int i = 0; i < M; i++) {
     for(int j = 0; j < N; j++) {

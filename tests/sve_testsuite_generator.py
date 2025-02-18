@@ -99,7 +99,8 @@ def make(kernels, arch):
   double* Atrans;
   float* fAtrans;
   """)
-  
+    
+    transposed = str("sme" in arch).lower()
     for kern in kernels:
 
         block_sizes = list(set(kern.block_sizes))
@@ -137,7 +138,7 @@ def make(kernels, arch):
 
             f.write("""
   {p}alpha = {alpha}; {p}beta = {beta}; ldb = {ldb};
-  {p}pointers = pre<{T}>({m}, {n}, {k}, {lda}, ldb, {ldc}, "{mtx}");
+  {p}pointers = pre<{T}>({m}, {n}, {k}, {lda}, ldb, {ldc}, "{mtx}", {transpose});
   posix_memalign(reinterpret_cast<void **>(&Atrans), 64, {lda}*{ldbsparse}*sizeof({T}));
   transpose_matrix(std::get<0>({p}pointers), {p}Atrans, {lda}, {ldbsparse});
   //printf("A:\\n");
@@ -152,6 +153,6 @@ def make(kernels, arch):
   free(std::get<0>({p}pointers)); free(std::get<1>({p}pointers)); free(std::get<2>({p}pointers)); free(std::get<3>({p}pointers)); free(std::get<4>({p}pointers)); free({p}prefetch); free({p}Atrans);
 """.format(m=kern.m, n=kern.n, k=kern.k, lda=kern.lda, ldb=kern.ldb, ldbsparse=kern.k if sparse else kern.ldb, ldc=kern.ldc, alpha=kern.alpha, beta=kern.beta,
            mtx=mtx, delta=kern.delta, name=name, sparse=2 if kern.ldb == 0 and arch[:7] == "arm_sve" else 1, A="Atrans" if arch.startswith("arm_sme") else "std::get<0>({p}pointers)".format(p=prec), 
-           p=prec, T="float" if prec == 'f' else "double"))
+           p=prec, T="float" if prec == 'f' else "double", transpose=transposed))
 
     f.write(test_generator.end_of_testsuite)
