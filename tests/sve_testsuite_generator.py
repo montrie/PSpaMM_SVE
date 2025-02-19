@@ -34,6 +34,7 @@ def make(kernels, arch):
     f.write(test_generator.head_of_testsuite)
 
     include_single_prec = False
+    has_matrix_ins = "sme" in arch
 
     for kern in kernels:
         arguments = ['pspamm-generator', str(kern.m), str(kern.n), str(kern.k), str(kern.lda),
@@ -65,9 +66,10 @@ def make(kernels, arch):
                 # this should be the same assertion as in ../scripts/max_arm_sve.py
                 bk = 1 if "sve" in arch else v_len
                 # ceiling division
+                vn = -(bn // -v_len) if "sme" in arch else bn
                 vm = -(bm // -v_len)  
                 vk = -(bk // -v_len) # should come out to 1 for bk = 1, meaning no changes for sve
-                if not ((bn + vk) * vm + bn * vk <= 32):
+                if not ((vn + bk) * vm + vn * bk <= 32):
                     print(f'Skipping block size {bm}x{bn} for {arch}')
                     continue
 
@@ -119,9 +121,10 @@ def make(kernels, arch):
                 # this should be the same assertion as in ../scripts/max_arm_sve.py
                 bk = 1 if "sve" in arch else v_len
                 # ceiling division
-                vm = -( bm // -v_len)
-                vk = -( bk // -v_len) # should come out to 1 for bk = 1, meaning no changes for sve
-                if not ((bn + vk) * vm + bn * vk <= 32):
+                vn = -(bn // -v_len) if "sme" in arch else bn
+                vm = -(bm // -v_len)
+                vk = -(bk // -v_len) # should come out to 1 for bk = 1, meaning no changes for sve
+                if not ((vn + bk) * vm + vn * bk <= 32):
                     # print(f'Skipping block size {bm}x{bn} for {arch}')
                     continue
 
@@ -136,23 +139,30 @@ def make(kernels, arch):
             prec = 'f' if isinstance(kern, SparseKernelS) or isinstance(kern, DenseKernelS) else ''
             sparse = isinstance(kern, SparseKernel) or isinstance(kern, SparseKernelS)
 
+            setup_Atrans = """
+              posix_memalign(reinterpret_cast<void **>(&{p}Atrans), 64, {lda}*{ldbsparse}*sizeof({T}));
+              transpose_matrix(std::get<0>({p}pointers), {p}Atrans, {lda}, {ldbsparse});
+              //printf("A:\\n");
+              //pretty_print({m}, {k}, {ldbsparse}, std::get<0>{p}(pointers));
+              //printf("{p}Atrans:\\n");
+              //pretty_print({k}, {m}, {lda}, {p}Atrans);
+              //printf("\\n");
+            """.format(m=kern.m, k=kern.k, lda=kern.lda, ldbsparse=kern.k if sparse else kern.ldb, p=prec, 
+                       T="float" if prec == f else "double") if has_matrix_ins else ""
+            free_Atrans = "free({p}Atrans);".format(p=prec) if has_matrix_ins else ""
+
+
             f.write("""
   {p}alpha = {alpha}; {p}beta = {beta}; ldb = {ldb};
   {p}pointers = pre<{T}>({m}, {n}, {k}, {lda}, ldb, {ldc}, "{mtx}", {transpose});
-  posix_memalign(reinterpret_cast<void **>(&Atrans), 64, {lda}*{ldbsparse}*sizeof({T}));
-  transpose_matrix(std::get<0>({p}pointers), {p}Atrans, {lda}, {ldbsparse});
-  //printf("A:\\n");
-  //pretty_print({m}, {k}, {ldbsparse}, std::get<0>{p}(pointers));
-  //printf("Atrans:\\n");
-  //pretty_print({k}, {m}, {lda}, Atrans);
-  //printf("\\n");
+  {setup_a_trans}
   setup_prefetch({p}prefetch, std::get<3>({p}pointers), {n}, {ldc});
   {name}({A}, std::get<{sparse}>({p}pointers), std::get<3>({p}pointers), {p}alpha, {p}beta, {p}prefetch);
   result = post<{T}>({m}, {n}, {k}, {lda}, &ldb, {ldc}, &{p}alpha, &{p}beta, std::get<0>({p}pointers), std::get<1>({p}pointers), std::get<3>({p}pointers), std::get<4>({p}pointers), {delta:.7f});
   results.push_back(std::make_tuple("{name}", result));
-  free(std::get<0>({p}pointers)); free(std::get<1>({p}pointers)); free(std::get<2>({p}pointers)); free(std::get<3>({p}pointers)); free(std::get<4>({p}pointers)); free({p}prefetch); free({p}Atrans);
+  free(std::get<0>({p}pointers)); free(std::get<1>({p}pointers)); free(std::get<2>({p}pointers)); free(std::get<3>({p}pointers)); free(std::get<4>({p}pointers)); free({p}prefetch);{free_a_trans}
 """.format(m=kern.m, n=kern.n, k=kern.k, lda=kern.lda, ldb=kern.ldb, ldbsparse=kern.k if sparse else kern.ldb, ldc=kern.ldc, alpha=kern.alpha, beta=kern.beta,
-           mtx=mtx, delta=kern.delta, name=name, sparse=2 if kern.ldb == 0 and arch[:7] == "arm_sve" else 1, A="Atrans" if arch.startswith("arm_sme") else "std::get<0>({p}pointers)".format(p=prec), 
+           mtx=mtx, delta=kern.delta, name=name, sparse=2 if kern.ldb == 0 and arch[:7] == "arm_sve" else 1, A="{p}Atrans".format(p=prec) if has_matrix_ins else "std::get<0>({p}pointers)".format(p=prec), setup_a_trans=setup_Atrans, free_a_trans=free_Atrans,
            p=prec, T="float" if prec == 'f' else "double", transpose=transposed))
 
     f.write(test_generator.end_of_testsuite)

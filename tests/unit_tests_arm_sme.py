@@ -100,8 +100,7 @@ delta_dp = 1e-7 # epsilon is around e-15 => /2
 # kernels.append(generator.DenseKernel("sme_comp_test5", 8, 16, 16, 8, 16, 16, 1.0, 0.0, [x.getBlocksize(8, 8, v_size, v_size) for x in blocksize_algs], delta_dp))
 # kernels.append(generator.DenseKernel("sme_base_test16_5", 16, 16, 8, 16, 16, 16, 1.0, 0.0, [x.getBlocksize(8, 8, v_size, v_size) for x in blocksize_algs], delta_dp))
 
-kernels.append(generator.DenseKernelS("sme_base_test1", 16, 16, 16, 16, 16, 16, 1.0, 0.0, [x.getBlocksize(16, 16, v_size_s, v_size_s) for x in blocksize_algs], delta_sp))
-
+kernels.append(generator.DenseKernelS("sme_single_base_test1", 16, 16, 16, 16, 16, 16, 1.0, 0.0, [x.getBlocksize(16, 16, v_size_s, v_size_s) for x in blocksize_algs], delta_sp))
 
 
 

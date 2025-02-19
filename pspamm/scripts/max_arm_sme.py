@@ -57,7 +57,9 @@ def ARM_condition(bm, bn, bk, v_size):
     # ceiling division
     vm = -(bm // -v_size)
     vk = -(bk // -v_size)
-    return (bn + vk) * vm + bn <= 32# and vm >= bk # and bn >= bk
+    vn = -(bn // -v_size)
+    #return (bn + vk) * vm + bn <= 32# and vm >= bk # and bn >= bk
+    return (vn + bk) * vm + vn * vk <= 32
 
 
 def tileable(m, bm):
