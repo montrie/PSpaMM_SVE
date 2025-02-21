@@ -109,7 +109,8 @@ void {funcName} (const {real_type}* A, const {real_type}* B, {real_type}* C, con
         vm = self.ceil_div(bm, v_size)              # vm can be 0 if bm < v_size -> makes ceil_div necessary
         vk = self.ceil_div(bk, v_size)
         vn = self.ceil_div(bn, v_size)
-        assert ((bn + vk) * vm + bn * vk <= 32)     # Needs to fit in SVE z registers
+        # assert ((bn + vk) * vm + bn * vk <= 32)     # Needs to fit in SVE z registers
+        assert ((vm + vn) * bk <= 32)  # Needs to fit in SVE z registers
         prec = self.precision_to_suffix() #"d" if self.get_precision() == Precision.DOUBLE else "s"
         c_mat_range = self.get_v_size
 
@@ -257,6 +258,8 @@ void {funcName} (const {real_type}* A, const {real_type}* B, {real_type}* C, con
         scalar_offs = cursor.name == 'C'  # scalar offsets are necessary for loading/storing the C matrix, but not for loading the A matrix
         # this gives us the base register of 'cursor' irrespective of the dummy offset we use
         prev_base = cursor.look(cursor_ptr, block_offset, Coords(down=0, right=0))[0].base
+        if store:
+            pass
 
         for ic in range(cols):
             for ir in range(rows):
@@ -278,7 +281,8 @@ void {funcName} (const {real_type}* A, const {real_type}* B, {real_type}* C, con
                     p = self.pred_n_trues(num_elems, v_size, None, is_B)
                     p_zeroing = self.pred_n_trues(num_elems, v_size, "z", is_B)
 
-                    cell_offset = Coords(down=ir * v_size, right=ic) # TODO: switch down and right for A matrix?
+                    # cell_offset = Coords(down=ir * v_size, right=ic) # TODO: why is it like that?
+                    cell_offset = Coords(down=ic, right=ir * v_size) # TODO: why is it like that?
 
                     # addr = base "pointer" + relative offset in bytes
                     addr, comment = cursor.look(cursor_ptr, block_offset, cell_offset)
@@ -308,6 +312,8 @@ void {funcName} (const {real_type}* A, const {real_type}* B, {real_type}* C, con
                         # print(cursor.name)
                         if is_za:
                             za_reg.offset %= offs_threshold
+                            if self.precision.value == 4:
+                                addr.disp *= self.precision.value
                         asm.add(st(registers[ir, ic], addr, True, comment, pred=p, scalar_offs=scalar_offs,
                                    add_reg=additional_regs[2], za=za_reg))
                         # perform prefetching after a store instruction, similar to KNL case
