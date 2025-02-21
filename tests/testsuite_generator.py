@@ -80,7 +80,7 @@ void gemm_ref(unsigned M, unsigned N, unsigned K, unsigned LDA, unsigned LDB, un
   for (unsigned row = 0; row < M; ++row) {
     for (unsigned col = 0; col < N; ++col) {
       for (unsigned k = 0; k < K; ++k) {
-        C[row * LDC + col] += ALPHA * A[row * LDA + k] * B[k * LDB + col];
+        C[row * LDC + col] += ALPHA * A[row * LDB + k] * B[k * LDC + col];
       }
     }
   }

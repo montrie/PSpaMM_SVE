@@ -69,7 +69,8 @@ def make(kernels, arch):
                 vn = -(bn // -v_len) if "sme" in arch else bn
                 vm = -(bm // -v_len)  
                 vk = -(bk // -v_len) # should come out to 1 for bk = 1, meaning no changes for sve
-                if not ((vn + bk) * vm + vn * bk <= 32):
+                # if not ((vn + bk) * vm + vn * bk <= 32):
+                if not ((vm + vn) * bk <= 32):
                     print(f'Skipping block size {bm}x{bn} for {arch}')
                     continue
 
@@ -124,7 +125,8 @@ def make(kernels, arch):
                 vn = -(bn // -v_len) if "sme" in arch else bn
                 vm = -(bm // -v_len)
                 vk = -(bk // -v_len) # should come out to 1 for bk = 1, meaning no changes for sve
-                if not ((vn + bk) * vm + vn * bk <= 32):
+                # if not ((vn + bk) * vm + vn * bk <= 32):
+                if not ((vm + vn) * bk <= 32):
                     # print(f'Skipping block size {bm}x{bn} for {arch}')
                     continue
 
@@ -139,15 +141,13 @@ def make(kernels, arch):
             prec = 'f' if isinstance(kern, SparseKernelS) or isinstance(kern, DenseKernelS) else ''
             sparse = isinstance(kern, SparseKernel) or isinstance(kern, SparseKernelS)
 
-            setup_Atrans = """
-              posix_memalign(reinterpret_cast<void **>(&{p}Atrans), 64, {lda}*{ldbsparse}*sizeof({T}));
-              transpose_matrix(std::get<0>({p}pointers), {p}Atrans, {lda}, {ldbsparse});
-              //printf("A:\\n");
-              //pretty_print({m}, {k}, {ldbsparse}, std::get<0>{p}(pointers));
-              //printf("{p}Atrans:\\n");
-              //pretty_print({k}, {m}, {lda}, {p}Atrans);
-              //printf("\\n");
-            """.format(m=kern.m, k=kern.k, lda=kern.lda, ldbsparse=kern.k if sparse else kern.ldb, p=prec, 
+            setup_Atrans ="""  posix_memalign(reinterpret_cast<void **>(&{p}Atrans), 64, {lda}*{ldbsparse}*sizeof({T}));
+  transpose_matrix(std::get<0>({p}pointers), {p}Atrans, {lda}, {ldbsparse});
+  //printf("A:\\n");
+  //pretty_print({m}, {k}, {ldbsparse}, std::get<0>{p}(pointers));
+  //printf("{p}Atrans:\\n");
+  //pretty_print({k}, {m}, {lda}, {p}Atrans);
+  //printf("\\n");""".format(m=kern.m, k=kern.k, lda=kern.lda, ldbsparse=kern.k if sparse else kern.ldb, p=prec, 
                        T="float" if prec == f else "double") if has_matrix_ins else ""
             free_Atrans = "free({p}Atrans);".format(p=prec) if has_matrix_ins else ""
 
