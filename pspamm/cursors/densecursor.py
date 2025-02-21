@@ -49,7 +49,8 @@ class DenseCursor(Cursor):
         Bri, Bci = dest_block.down, dest_block.right
         bri, bci = dest_cell.down, dest_cell.right
 
-        return (Bci*self.bc + bci) * self.ld + Bri*self.br + bri
+        # return (Bci*self.bc + bci) * self.ld + Bri*self.br + bri
+        return Bci*self.bc + bci + (Bri*self.br + bri) * self.ld
 
     def move(self,
              src: CursorLocation,
