@@ -5,11 +5,14 @@ def getBlocksize(m, n, bk, v_size=2):
     maxval = 0
 
     for i in range(1, m + 1, 1):
-        next_multiple = i
-        while next_multiple % v_size != 0:
-            next_multiple += 1
+        next_multiple_i = i
+        while next_multiple_i % v_size != 0:
+            next_multiple_i += 1
         for j in range(1, n + 1):
-            if ARM_condition(next_multiple, j, bk, v_size) and tileable(m, i):
+            next_multiple_j = j
+            while next_multiple_j % v_size != 0:
+                next_multiple_j += 1
+            if ARM_condition(next_multiple_i, next_multiple_j, bk, v_size) and tileable(m, i) and tileable(n, j):
                 if i * j >= maxval:
                     maxval = i * j
                     bm = i
@@ -59,7 +62,8 @@ def ARM_condition(bm, bn, bk, v_size):
     vk = -(bk // -v_size)
     vn = -(bn // -v_size)
     #return (bn + vk) * vm + bn <= 32# and vm >= bk # and bn >= bk
-    return (vn + bk) * vm + vn * vk <= 32
+    # return (vn + bk) * vm + vn * vk <= 32
+    return (vn + vm) * bk <= 32
 
 
 def tileable(m, bm):
@@ -68,46 +72,52 @@ def tileable(m, bm):
 
 
 def main():
-    m = 80
-    n = 80
-    k = 80
+    # m = 80
+    # n = 80
+    # k = 80
+    # v_size = 8
+#     bk = v_size
+#     bm, bn = getBlocksize(m, n, bk, v_size)
+#     vm = -(bm // -v_size)
+
+
+#     a1 = [[vm * c + r for c in range(bn)] for r in range(vm)]
+#     a = [[vm * c + r for c in range(bk)] for r in range(vm)]
+#     b = [[vm * bk + bn * r + c for c in range(bn)] for r in range(bk)]
+#     c = [[32 - vm * bn + vm * c + r for c in range(bn)] for r in range(vm)]
+
+# #    for bm in 
+#     print(f"a1={a1}")
+#     print(f"bm={bm}, bn={bn}")
+#     print(f"a={a}")
+#     print(f"b={b}")
+#     print(f"c={c}")
+
+#     bm, bn, bk = get_blocksize(m, n, k, v_size)
+#     vm = -(bm // -v_size)
+#     a = [[vm * c + r for c in range(bk)] for r in range(vm)]
+#     b = [[vm * bk + bn * r + c for c in range(bn)] for r in range(bk)]
+# #    c = [[32 - vm * bn + vm * c + r for c in range(bn)] for r in range(vm)]
+
+# #    for bm in
+#     print(f"bm={bm}, bn={bn}, bk={bk}")
+#     print(f"a={a}")
+#     print(f"b={b}")
+# #    print(f"c={c}")
+
+#     bm, bn, bk = get_blocksize(m, n, k, v_size)
+
+    m = 16
+    n = 16
+    k = 16
     v_size = 8
-    bk = v_size
-    bm, bn = getBlocksize(m, n, bk, v_size)
-    vm = -(bm // -v_size)
-
-
-    a1 = [[vm * c + r for c in range(bn)] for r in range(vm)]
-    a = [[vm * c + r for c in range(bk)] for r in range(vm)]
-    b = [[vm * bk + bn * r + c for c in range(bn)] for r in range(bk)]
-    c = [[32 - vm * bn + vm * c + r for c in range(bn)] for r in range(vm)]
-
-#    for bm in 
-    print(f"a1={a1}")
-    print(f"bm={bm}, bn={bn}")
-    print(f"a={a}")
-    print(f"b={b}")
-    print(f"c={c}")
-
-    bm, bn, bk = get_blocksize(m, n, k, v_size)
-    vm = -(bm // -v_size)
-    a = [[vm * c + r for c in range(bk)] for r in range(vm)]
-    b = [[vm * bk + bn * r + c for c in range(bn)] for r in range(bk)]
-#    c = [[32 - vm * bn + vm * c + r for c in range(bn)] for r in range(vm)]
-
-#    for bm in
-    print(f"bm={bm}, bn={bn}, bk={bk}")
-    print(f"a={a}")
-    print(f"b={b}")
-#    print(f"c={c}")
-
-    bm, bn, bk = get_blocksize(m, n, k, v_size)
-    bm, bn = getBlocksize(80, 80, bk=v_size, v_size=v_size)
+    bm, bn = getBlocksize(m, n, bk=v_size, v_size=v_size)
     bk = v_size
     vm = -(bm // -v_size)
     vk = -(bk // -v_size)
+    vn = -(bn // -v_size)
     a = [[vm * c + r for c in range(bk)] for r in range(vm)]
-    b = [[vm * bk + bn * r + c for c in range(bn)] for r in range(vk)]
+    b = [[vm * bk + vn * r + c for c in range(vn)] for r in range(bk)]
 #    c = [[32 - vm * bn + vm * c + r for c in range(bn)] for r in range(vm)]
 
     print(f"Transposed A, MAYBE transposed B")
