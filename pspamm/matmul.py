@@ -306,7 +306,7 @@ class MatMul:
             for Bki in range(0,Bk):
 
                 # TODO: this only works for cases where M = N
-                to_A = Coords(right=Bki) if not self.is_sme else Coords(right=Bki) # Coords(right=Bki, down=Bni)
+                to_A = Coords(right=Bki) if not self.is_sme else Coords(down=Bki) # Coords(right=Bki, down=Bni)
                 # TODO: line below is probably false, maybe change to absolute=False?
                 to_B = Coords(right=Bni, down=Bki, absolute=True)# if not self.is_sme else Coords(right=Bki, down=Bni, absolute=True)# Coords(right=Bki, absolute=True)
                 # to_B = Coords(right=Bni, down=Bki, absolute=True) #if not self.is_sme else Coords(right=Bni, down=Bki, absolute=False)
@@ -376,7 +376,7 @@ class MatMul:
 
             if (Bni != Bn-1):
                 # move_coords = Coords(right=1) if not self.is_sme else Coords(down=1)
-                move_C, C_ptr = self.C.move(C_ptr, Coords(right=1)) if not self.is_sme else self.C.move(C_ptr, Coords(down=1))
+                move_C, C_ptr = self.C.move(C_ptr, Coords(right=1)) #if not self.is_sme else self.C.move(C_ptr, Coords(down=1))
                 asm.add(move_C)
                 if self.C_pf:
                   move_C_pf, C_pf_ptr = self.C_pf.move(C_pf_ptr, Coords(right=1))
@@ -403,10 +403,10 @@ class MatMul:
         loopBody = [
           self.make_nk_unroll(),
         #   *([self.A.move(A_ptr, Coords(down=1))[0]] if not self.is_sme else []),
-          *([self.A.move(A_ptr, Coords(down=1))[0]] if not self.is_sme else [self.A.move(A_ptr, Coords(down=1))[0]]),
+          *([self.A.move(A_ptr, Coords(down=1))[0]] if not self.is_sme else [self.A.move(A_ptr, Coords(right=1))[0]]),
         #   *([self.B.move(CursorLocation(), Coords(down=1), vector=self.generator.is_sparse)[0]] if self.is_sme and Bn > 1 else []),
-        #   self.C.move(C_ptr, Coords(down=1, right=1-Bn))[0]
-          *([self.C.move(C_ptr, Coords(down=1, right=1-Bn))[0]] if not self.is_sme else [self.C.move(C_ptr, Coords(down=1-Bn, right=1))[0]])
+          self.C.move(C_ptr, Coords(down=1, right=1-Bn))[0]
+        #   *([self.C.move(C_ptr, Coords(down=1, right=1-Bn))[0]] if not self.is_sme else [self.C.move(C_ptr, Coords(down=1-Bn, right=1))[0]])
         ]
         if self.C_pf:
           loopBody.append(self.C_pf.move(C_pf_ptr, Coords(down=1, right=1-Bn))[0])
