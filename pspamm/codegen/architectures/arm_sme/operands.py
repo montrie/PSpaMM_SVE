@@ -94,9 +94,19 @@ class Register_ZA(Register):
     def ugly(self):
         # access the tile-th horizontal slice of the ZA register
         return "za{}h.{}{}".format(self.tile, self.ugly_precision, self.ugly_mem_test)
+    
+    @property
+    def ugly_max_tile_slice_offset(self):
+        return {
+            "d": 2,
+            "s": 4,
+            "h": 8,
+            "b": 16
+        }[self.ugly_precision]
+
     @property
     def ugly_mem_test(self):
-        return "[{}, #{}]".format(self.ugly_base, self.offset % 2)
+        return "[{}, #{}]".format(self.ugly_base, self.offset % self.ugly_max_tile_slice_offset)
     
     @property
     def ugly_mem_vector_group(self):
