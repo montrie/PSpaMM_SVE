@@ -26,6 +26,48 @@ def getBlocksize(m, n, bk, v_size=2):
     return (bm, bn)
 
 
+def getBlocksizeBk(m, n, k, v_size=2):
+    # v_size default is 2, however for SVE that parameter will always be larger
+    bm = 2
+    bn = 1
+    maxval = 0
+
+    bm = v_size
+    bn = v_size
+    bk = 1
+    """
+    for i in range(1, m + 1, 1):
+        next_multiple_i = i
+        while next_multiple_i % v_size != 0:
+            next_multiple_i += 1
+        for j in range(1, n + 1):
+            next_multiple_j = j
+            while next_multiple_j % v_size != 0:
+                next_multiple_j += 1
+            if ARM_condition(next_multiple_i, next_multiple_j, bk, v_size) and tileable(m, i) and tileable(n, j):
+                if i * j >= maxval:
+                    maxval = i * j
+                    bm = i
+                    bn = j
+    """
+    if m % v_size != 0 or n % v_size != 0:
+        raise RuntimeError("Dimensions m and n need to be a multiple of the vector length. We suggest padding the matrix dimensions")
+
+    for bki in range(1, k + 1, 1):
+        if ARM_condition(bm, bn, bk, v_size):
+            bk = bki
+        else:
+            return (bm, bn, bk)
+    return (bm, bn, bk)
+
+    if maxval == 0:
+        raise RuntimeError("Could not find an appropriate block size. We suggest padding the matrix dimensions")
+    
+    print(f"bm={bm}, bn={bn}, bk={bk}")
+
+    return (bm, bn)
+
+
 def get_blocksize(m, n, k, v_size=2):
     bm_ovh = m % v_size
     bn_ovh = n % v_size
@@ -121,6 +163,21 @@ def main():
 #    c = [[32 - vm * bn + vm * c + r for c in range(bn)] for r in range(vm)]
 
     print(f"Transposed A, MAYBE transposed B")
+    print(f"bm={bm}, bn={bn}, bk={bk}")
+    print(f"a={a}")
+    print(f"b={b}")
+#    print(f"c={c}")
+
+    bm, bn, bk = getBlocksizeBk(m, n, k, v_size=v_size)
+#    bk = v_size
+    vm = -(bm // -v_size)
+    vk = -(bk // -v_size)
+    vn = -(bn // -v_size)
+    a = [[vm * c + r for r in range(vm)] for c in range(bk)]
+    b = [[vm * bk + vn * r + c for c in range(vn)] for r in range(bk)]
+#    c = [[32 - vm * bn + vm * c + r for c in range(bn)] for r in range(vm)]
+
+    print(f"Transposed A, B: KxM, KxN")
     print(f"bm={bm}, bn={bn}, bk={bk}")
     print(f"a={a}")
     print(f"b={b}")
