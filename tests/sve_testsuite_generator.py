@@ -64,7 +64,7 @@ def make(kernels, arch):
                 reglen = veclen // 128
                 v_len = 2 * reglen if prec == 'd' else 4 * reglen
                 # this should be the same assertion as in ../scripts/max_arm_sve.py
-                bk = 1 if "sve" in arch else v_len
+                bk = 1 if "sve" in arch else v_len if len(bs) == 2 else bs[2]
                 # ceiling division
                 vn = -(bn // -v_len) if "sme" in arch else bn
                 vm = -(bm // -v_len)  
