@@ -33,9 +33,10 @@ delta_dp = 1e-7 # epsilon is around e-15 => /2
 # kernels.append(generator.DenseKernel("sme_base_test2", 8, 8, 8, 8, 8, 8, 1.0, 2.0, [x.getBlocksize(8, 8, v_size, v_size) for x in blocksize_algs], delta_dp))
 # kernels.append(generator.DenseKernel("sme_base_test3", 8, 8, 8, 8, 8, 8, 2.0, 0.0, [x.getBlocksize(8, 8, v_size, v_size) for x in blocksize_algs], delta_dp))
 # kernels.append(generator.DenseKernel("sme_base_test4", 8, 8, 8, 8, 8, 8, 2.0, 1.0, [x.getBlocksize(8, 8, v_size, v_size) for x in blocksize_algs], delta_dp))
-# kernels.append(generator.DenseKernel("sme_base_test5", 8, 8, 8, 8, 8, 8, 2.0, 2.0, [x.getBlocksize(8, 8, v_size, v_size) for x in blocksize_algs], delta_dp))
+kernels.append(generator.DenseKernel("sme_base_test5", 8, 8, 8, 8, 8, 8, 2.0, 2.0, [x.getBlocksize(8, 8, v_size, v_size) for x in blocksize_algs], delta_dp))
 
-kernels.append(generator.DenseKernel("sme_base_test6", 16, 16, 16, 16, 16, 16, 1.0, 0.0, [x.getBlocksize(8, 8, v_size, v_size) for x in blocksize_algs], delta_dp))
+# kernels.append(generator.DenseKernel("sme_base_test6", 16, 16, 16, 16, 16, 16, 1.0, 0.0, [x.getBlocksize(8, 8, v_size, v_size) for x in blocksize_algs], delta_dp))
+# kernels.append(generator.DenseKernel("sme_base_test6_5", 16, 16, 16, 16, 16, 16, 1.0, 0.0, [x.getBlocksizeBk(v_size, v_size, 16, v_size) for x in blocksize_algs], delta_dp))
 # kernels.append(generator.DenseKernel("sme_base_test7", 16, 16, 16, 16, 16, 16, 1.0, 2.0, [x.getBlocksize(8, 8, v_size, v_size) for x in blocksize_algs], delta_dp))
 # kernels.append(generator.DenseKernel("sme_base_test8", 16, 16, 16, 16, 16, 16, 2.0, 0.0, [x.getBlocksize(8, 8, v_size, v_size) for x in blocksize_algs], delta_dp))
 # kernels.append(generator.DenseKernel("sme_base_test9", 16, 16, 16, 16, 16, 16, 2.0, 1.0, [x.getBlocksize(8, 8, v_size, v_size) for x in blocksize_algs], delta_dp))
@@ -100,15 +101,15 @@ kernels.append(generator.DenseKernel("sme_base_test6", 16, 16, 16, 16, 16, 16, 1
 # kernels.append(generator.DenseKernel("sme_comp_test5", 8, 16, 16, 8, 16, 16, 1.0, 0.0, [x.getBlocksize(8, 8, v_size, v_size) for x in blocksize_algs], delta_dp))
 # kernels.append(generator.DenseKernel("sme_base_test16_5", 16, 16, 8, 16, 16, 16, 1.0, 0.0, [x.getBlocksize(8, 8, v_size, v_size) for x in blocksize_algs], delta_dp))
 
-kernels.append(generator.DenseKernelS("sme_single_base_test1", 16, 16, 16, 16, 16, 16, 1.0, 0.0, [x.getBlocksize(16, 16, v_size_s, v_size_s) for x in blocksize_algs], delta_sp))
+# kernels.append(generator.DenseKernelS("sme_single_base_test1", 16, 16, 16, 16, 16, 16, 1.0, 0.0, [x.getBlocksize(16, 16, v_size_s, v_size_s) for x in blocksize_algs], delta_sp))
 # kernels.append(generator.DenseKernelS("sme_single_base_test2", 16, 16, 16, 16, 16, 16, 1.0, 2.0, [x.getBlocksize(16, 16, v_size_s, v_size_s) for x in blocksize_algs], delta_sp))
 # kernels.append(generator.DenseKernelS("sme_single_base_test3", 16, 16, 16, 16, 16, 16, 2.0, 0.0, [x.getBlocksize(16, 16, v_size_s, v_size_s) for x in blocksize_algs], delta_sp))
 # kernels.append(generator.DenseKernelS("sme_single_base_test4", 16, 16, 16, 16, 16, 16, 2.0, 1.0, [x.getBlocksize(16, 16, v_size_s, v_size_s) for x in blocksize_algs], delta_sp))
 # kernels.append(generator.DenseKernelS("sme_single_base_test5", 16, 16, 16, 16, 16, 16, 2.0, 2.0, [x.getBlocksize(16, 16, v_size_s, v_size_s) for x in blocksize_algs], delta_sp))
 
-kernels.append(generator.DenseKernelS("sme_single_base_test6", 32, 32, 32, 32, 32, 32, 1.0, 0.0, [x.getBlocksize(32, 32, v_size_s, v_size_s) for x in blocksize_algs], delta_sp))
+# kernels.append(generator.DenseKernelS("sme_single_base_test6", 32, 32, 32, 32, 32, 32, 1.0, 0.0, [x.getBlocksize(32, 32, v_size_s, v_size_s) for x in blocksize_algs], delta_sp))
 
-kernels.append(generator.DenseKernelS("sme_single_base_test11", 64, 64, 64, 64, 64, 64, 1.0, 0.0, [x.getBlocksize(64, 64, v_size_s, v_size_s) for x in blocksize_algs], delta_sp))
+# kernels.append(generator.DenseKernelS("sme_single_base_test11", 64, 64, 64, 64, 64, 64, 1.0, 0.0, [x.getBlocksize(64, 64, v_size_s, v_size_s) for x in blocksize_algs], delta_sp))
 
 
 

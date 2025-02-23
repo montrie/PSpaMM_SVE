@@ -149,9 +149,9 @@ def main():
 
 #     bm, bn, bk = get_blocksize(m, n, k, v_size)
 
-    m = 16
-    n = 16
-    k = 16
+    m = 8
+    n = 8
+    k = 8
     v_size = 8
     bm, bn = getBlocksize(m, n, bk=v_size, v_size=v_size)
     bk = v_size
