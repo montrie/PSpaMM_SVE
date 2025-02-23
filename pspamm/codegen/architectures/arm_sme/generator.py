@@ -118,7 +118,8 @@ void {funcName} (const {real_type}* A, const {real_type}* B, {real_type}* C, con
         # use max(vm, 1) in case bm < v_size, otherwise we get no A_regs/C_regs
         # TODO: adjust the register creation according to scripts/max_arm_sme.py
         # TODO: we prob. need to introduce vn to vectorize the B_reg loads
-        A_regs = Matrix([[z(max(vm, 1) * c + r , prec) for c in range(bk)] for r in range(max(vm, 1))])
+#        A_regs = Matrix([[z(max(vm, 1) * c + r , prec) for c in range(bk)] for r in range(max(vm, 1))])
+        A_regs = Matrix([[z(max(vm, 1) * c + r , prec) for r in range(max(vm, 1))] for c in range(bk)])
         B_regs = Matrix([[z(max(vm, 1) * bk + vn * r + c, prec) for c in range(vn)] for r in range(bk)]) # switched bn with vn
 #        B_regs = Matrix([[z(max(vm, 1) * bk + bn * r + c, prec) for c in range(bn)] for r in range(bk)])
 # TODO: inner list should have c running from 0 to num_rows in a tile, n from 0 to number of tiles depending on data type
@@ -138,7 +139,7 @@ void {funcName} (const {real_type}* A, const {real_type}* B, {real_type}* C, con
         loop_reg = r(9)
 
         self.init_registers(bm, bn, v_size)
-
+        
         return A_regs, B_regs, C_regs, starting_regs, alpha_reg, beta_reg, loop_reg, additional_regs
 
     def bcst_alpha_beta(self,
@@ -261,6 +262,7 @@ void {funcName} (const {real_type}* A, const {real_type}* B, {real_type}* C, con
         if store:
             pass
 
+        print(f"Name={cursor.name}")
         for ic in range(cols):
             for ir in range(rows):
                 # cond = (mask is None) or (mask[ir, ic])
@@ -281,8 +283,13 @@ void {funcName} (const {real_type}* A, const {real_type}* B, {real_type}* C, con
                     p = self.pred_n_trues(num_elems, v_size, None, is_B)
                     p_zeroing = self.pred_n_trues(num_elems, v_size, "z", is_B)
 
+                    print(f"ir, ic = {ir}, {ic}")
                     # cell_offset = Coords(down=ir * v_size, right=ic) # TODO: why is it like that?
-                    cell_offset = Coords(down=ic, right=ir * v_size) # TODO: why is it like that?
+                    if cursor.name == "A":
+                        cell_offset = Coords(down=ir, right=ic * v_size) # TODO: why is it like that?
+                    else:
+                        # cursor.name == "C"
+                        cell_offset = Coords(down=ic, right=ir * v_size) # TODO: why is it like that?
 
                     # addr = base "pointer" + relative offset in bytes
                     addr, comment = cursor.look(cursor_ptr, block_offset, cell_offset)
@@ -388,9 +395,16 @@ void {funcName} (const {real_type}* A, const {real_type}* B, {real_type}* C, con
         # TODO: where do we have a call to move_register_block that defines is_B? seems like is_B is never set but always uses its default value?
 
         asm = block("Block GEMM microkernel")
+        # A=KxM, B=KxN
         """block_row, block_col, (start)index, pattern_matrix (true/false)"""
-        bm, bk, aidx, apattern = A.get_block(A_ptr, to_A_block)
+        # bm, bk, aidx, apattern = A.get_block(A_ptr, to_A_block)
+        bk, bm, aidx, apattern = A.get_block(A_ptr, to_A_block)
+        print(f"bm, bk = {bm}, {bk}")
         bk, bn, bidx, bpattern = B.get_block(B_ptr, to_B_block)
+        print(f"bk, bn = {bk}, {bn}")
+
+        #TODO: DELETE!
+        print(f"bm, bn, bk = {bm}, {bn}, {bk}")
 
         # tell sparse_mask() that we use sve
         # TODO: explain why this is necessary!
@@ -441,7 +455,8 @@ void {funcName} (const {real_type}* A, const {real_type}* B, {real_type}* C, con
                     if self.is_sparse:
                         # if self.k != self.n:
                         #     Vni = Vni * 2 + 1
-                        cond = mask[Vni, bki] # TODO: switch to addressing row ir * 2 + 1
+                        # cond = mask[Vni, bki] # TODO: switch to addressing row ir * 2 + 1
+                        cond = mask[bki, Vni] # TODO: was Vni, bki before
                         # if self.k != self.n:
                         #     Vni = (Vni -1) // 2
                     else:
@@ -508,7 +523,8 @@ void {funcName} (const {real_type}* A, const {real_type}* B, {real_type}* C, con
                     if self.is_sparse:
                         # if self.k != self.n:
                         #     Vni = Vni * 2 + 1
-                        cond = mask[Vni, bki] # TODO: switch to addressing row ir * 2 + 1
+                        # cond = mask[Vni, bki] # TODO: switch to addressing row ir * 2 + 1
+                        cond = mask[bki, Vni] # TODO: was Vni, bki before
                         # if self.k != self.n:
                         #     Vni = (Vni -1) // 2
                     else:
@@ -518,7 +534,9 @@ void {funcName} (const {real_type}* A, const {real_type}* B, {real_type}* C, con
                         B_cell_addr, B_comment = B.look(B_ptr, to_B_block, to_cell, vector=self.is_sparse)
                         comment = "C[{}:{},{}] += A[{}:{},{}]*{}".format(Vmi * v_size, end_index, Vni * v_size, Vmi * v_size,
                                                                          end_index, bki, B_comment)
-                        asm.add(fmopa(C_regs[Vmi, Vni], A_regs[Vmi, bki], B_regs[bki, Vni], pred=p_merging, pred2=p_merging2, comment=comment))
+                        print(f"bm={bm}, bn={bn}")
+                        # TODO: was A_regs[Vmi, bki] before
+                        asm.add(fmopa(C_regs[Vmi, Vni], A_regs[bki, Vmi], B_regs[bki, Vni], pred=p_merging, pred2=p_merging2, comment=comment))
         return asm
 
     def init_prefetching(self, prefetching):
