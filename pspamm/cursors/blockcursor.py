@@ -233,11 +233,20 @@ def sparse_mask(A_regs: Matrix[Register],
     mask = Matrix.full(Vr, Vc, False)
     A_br, A_bc, A_idx, A_pat = A.get_block(A_ptr, A_block_offset)
     B_br, B_bc, B_idx, B_pat = B.get_block(B_ptr, B_block_offset)
+    if is_sme:
+        #TODO: maybe this needs ceiling division?
+        print(f"A_bc, B_br = {A_bc}, {B_br}")
+        A_bc //= v_size
+
+    print(f"Vr, Vc, A_bc = {Vr}, {Vc}, {A_bc}")
 
     if not is_sve:
         assert (Vr * v_size == A_br)    # bm must tile m exactly for now in NEON and AVX512
     assert(Vc >= A_bc)                  # Matrix block must fit in register block
-    assert(A_bc == B_br)                # Matrix blocks are compatible
+    if not is_sme:
+        assert(A_bc == B_br)            # Matrix blocks are compatible
+    else:
+        assert(A_br == B_br)            # Matrix extension requires equally sized row dimensions 
 
     # if is_sme:
     #     for Vci in range(A_bc):
