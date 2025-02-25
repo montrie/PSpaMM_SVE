@@ -228,8 +228,8 @@ def sparse_mask(A_regs: Matrix[Register],
           ) -> Matrix[bool]:
 
     Vr, Vc = A_regs.shape
-    if is_sme:
-        Vr *= 2 # Useful for determining offsets and vector registers of A in generator.make_microkernel
+    # if is_sme:
+    #     Vr *= 2 # Useful for determining offsets and vector registers of A in generator.make_microkernel
     mask = Matrix.full(Vr, Vc, False)
     A_br, A_bc, A_idx, A_pat = A.get_block(A_ptr, A_block_offset)
     B_br, B_bc, B_idx, B_pat = B.get_block(B_ptr, B_block_offset)
@@ -248,13 +248,16 @@ def sparse_mask(A_regs: Matrix[Register],
     else:
         assert(A_br == B_br)            # Matrix extension requires equally sized row dimensions 
 
-    # if is_sme:
-    #     for Vci in range(A_bc):
-    #         if B_pat[:,Vci].any(axis=0):
-    #             mask[:Vr//2,Vci] = True
-    #         if B_pat[Vci,:].any(axis=1):
-    #             mask[Vr//2:,Vci] = True
-    #     return mask
+    print(f"A_br={A_br}, A_bc={A_bc}, Vr={Vr}, Vc={Vc}, mask.shape={mask.shape}")
+    if is_sme:
+        for Vri in range(A_br):
+            if B_pat[Vri,:].any(axis=1):
+                mask[Vri, :] = True
+            # if B_pat[:,Vci].any(axis=0):
+            #     mask[:Vr//2,Vci] = True
+            # if B_pat[Vci,:].any(axis=1):
+            #     mask[Vr//2:,Vci] = True
+        return mask
 
     # Mask out registers not used in current block, including zero-rows of B
     for Vci in range(A_bc):
