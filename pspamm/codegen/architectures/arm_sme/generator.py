@@ -256,7 +256,7 @@ void {funcName} (const {real_type}* A, const {real_type}* B, {real_type}* C, con
         prev_disp = 0
         offs_threshold = self.get_v_size() // self.v_len
         prev_overhead = True
-        scalar_offs = cursor.name == 'C'  # scalar offsets are necessary for loading/storing the C matrix, but not for loading the A matrix
+        scalar_offs = is_za # cursor.name == 'C'  # scalar offsets are necessary for loading/storing the C matrix, but not for loading the A matrix
         # this gives us the base register of 'cursor' irrespective of the dummy offset we use
         prev_base = cursor.look(cursor_ptr, block_offset, Coords(down=0, right=0))[0].base
         if store:
@@ -285,7 +285,8 @@ void {funcName} (const {real_type}* A, const {real_type}* B, {real_type}* C, con
 
                     print(f"ir, ic = {ir}, {ic}")
                     # cell_offset = Coords(down=ir * v_size, right=ic) # TODO: why is it like that?
-                    if cursor.name == "A":
+                    if not is_za:
+                        # cursor.name == "A":
                         cell_offset = Coords(down=ir, right=ic * v_size) # TODO: why is it like that?
                     else:
                         # cursor.name == "C"
@@ -310,6 +311,9 @@ void {funcName} (const {real_type}* A, const {real_type}* B, {real_type}* C, con
                     addr.base = prev_base
                     addr.disp = ((addr.disp - prev_disp) // mul_vl) * self.precision.value
 
+                    if cursor.name == "C" and not is_za:
+                        addr.disp //= v_size
+
                     if store:
                         # TODO: scalar_offs set to True so we can use x10 as a scalar register offset
                         # if cont_counter % offs_threshold == 0:
@@ -319,7 +323,7 @@ void {funcName} (const {real_type}* A, const {real_type}* B, {real_type}* C, con
                         # print(cursor.name)
                         if is_za:
                             za_reg.offset %= offs_threshold
-                            if self.precision.value == 4:
+                            if self.precision.value == Precision.SINGLE.value:
                                 addr.disp *= self.precision.value
                         asm.add(st(registers[ir, ic], addr, True, comment, pred=p, scalar_offs=scalar_offs,
                                    add_reg=additional_regs[2], za=za_reg))
@@ -337,7 +341,7 @@ void {funcName} (const {real_type}* A, const {real_type}* B, {real_type}* C, con
                             za_reg.offset %= offs_threshold
                         else:
                             # TODO: maybe remove second part of if clause again
-                            if addr.ugly_base != "x2" and cursor.name != "C": # and prev_base.clobbered != "x2":
+                            if addr.ugly_base != "x2" and cursor.name != "C": # not scalar_offs: # and prev_base.clobbered != "x2":
                                 addr.disp //= self.precision.value
                             # TODO: FOR NOW KEEP THE NEXT TWO LINES; MIGHT BE NEEDED LATER AFTER ALL
                             # if addr.ugly_base == "x11" and cursor.name == "C":
