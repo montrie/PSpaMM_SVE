@@ -141,12 +141,12 @@ def make(kernels, arch):
             prec = 'f' if isinstance(kern, SparseKernelS) or isinstance(kern, DenseKernelS) else ''
             sparse = isinstance(kern, SparseKernel) or isinstance(kern, SparseKernelS)
 
-            setup_Atrans ="""  posix_memalign(reinterpret_cast<void **>(&{p}Atrans), 64, {lda}*{ldbsparse}*sizeof({T}));
+            setup_Atrans ="""posix_memalign(reinterpret_cast<void **>(&{p}Atrans), 64, {lda}*{ldbsparse}*sizeof({T}));
   transpose_matrix(std::get<0>({p}pointers), {p}Atrans, {lda}, {ldbsparse});
   //printf("A:\\n");
   //pretty_print({m}, {k}, {ldbsparse}, std::get<0>{p}(pointers));
-  //printf("{p}Atrans:\\n");
-  //pretty_print({k}, {m}, {lda}, {p}Atrans);
+  printf("{p}Atrans:\\n");
+  pretty_print({k}, {m}, {lda}, {p}Atrans);
   //printf("\\n");""".format(m=kern.m, k=kern.k, lda=kern.lda, ldbsparse=kern.k if sparse else kern.ldb, p=prec, 
                        T="float" if prec == f else "double") if has_matrix_ins else ""
             free_Atrans = "free({p}Atrans);".format(p=prec) if has_matrix_ins else ""
@@ -155,12 +155,18 @@ def make(kernels, arch):
             f.write("""
   {p}alpha = {alpha}; {p}beta = {beta}; ldb = {ldb};
   {p}pointers = pre<{T}>({m}, {n}, {k}, {lda}, ldb, {ldc}, "{mtx}", {transpose});
+  printf("After pre()\\n");
   {setup_a_trans}
+  printf("After setup a trans\\n");
   setup_prefetch({p}prefetch, std::get<3>({p}pointers), {n}, {ldc});
   {name}({A}, std::get<{sparse}>({p}pointers), std::get<3>({p}pointers), {p}alpha, {p}beta, {p}prefetch);
+  printf("After generated function\\n");
   result = post<{T}>({m}, {n}, {k}, {lda}, &ldb, {ldc}, &{p}alpha, &{p}beta, std::get<0>({p}pointers), std::get<1>({p}pointers), std::get<3>({p}pointers), std::get<4>({p}pointers), {delta:.7f});
+  printf("After post()\\n");
   results.push_back(std::make_tuple("{name}", result));
-  free(std::get<0>({p}pointers)); free(std::get<1>({p}pointers)); free(std::get<2>({p}pointers)); free(std::get<3>({p}pointers)); free(std::get<4>({p}pointers)); free({p}prefetch);{free_a_trans}
+  printf("After pushback result\\n");
+  //free(std::get<0>({p}pointers)); free(std::get<1>({p}pointers)); free(std::get<2>({p}pointers)); free(std::get<3>({p}pointers)); free(std::get<4>({p}pointers)); free({p}prefetch); {free_a_trans}
+  printf("After free pointers\\n");
 """.format(m=kern.m, n=kern.n, k=kern.k, lda=kern.lda, ldb=kern.ldb, ldbsparse=kern.k if sparse else kern.ldb, ldc=kern.ldc, alpha=kern.alpha, beta=kern.beta,
            mtx=mtx, delta=kern.delta, name=name, sparse=2 if kern.ldb == 0 and arch[:7] == "arm_sve" else 1, A="{p}Atrans".format(p=prec) if has_matrix_ins else "std::get<0>({p}pointers)".format(p=prec), setup_a_trans=setup_Atrans, free_a_trans=free_Atrans,
            p=prec, T="float" if prec == 'f' else "double", transpose=transposed))
