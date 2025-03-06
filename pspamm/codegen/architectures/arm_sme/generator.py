@@ -128,8 +128,12 @@ void {funcName} (const {real_type}* A, const {real_type}* B, {real_type}* C, con
 #        C_regs = Matrix([[z(32 - max(vm, 1) * bn + max(vm, 1) * c + r, prec) for c in range(bn)] for r in range(max(vm, 1))])
 
         # TODO: needs to be the first entry in B_regs, I think we can get away again with not statically assigning an alpha/beta register
-        b_reg = vm*bk + vn*(bk-1) + vn - 1 + 1 #max(vm, 1) * bk
-        alpha_reg = [z(b_reg, prec), z(b_reg, prec)]
+        a_reg = [4, 0]
+        b_reg = max(vm, 1) * bk # vm*bk + vn*(bk-1) + vn - 1 + 1 #max(vm, 1) * bk
+#        b_reg = vm*bk + vn*(bk-1) + vn - 1 + 1 #max(vm, 1) * bk
+#        alpha_reg = [z(b_reg, prec), z(b_reg, prec)]
+        alpha_reg = [z(a_reg[0], prec), z(a_reg[1], prec)] #, z(a_reg[2], prec)]
+#        beta_reg = [z(a_reg, prec), z(a_reg, prec)]
         beta_reg = [z(b_reg + 1, prec), z(b_reg + 1, prec)]
 
         starting_regs = [r(0), r(1), r(2), r(3), r(4), r(5), r(6)]  # r6 is needed for predicate creation, r5 is added in init_prefetching()
@@ -312,7 +316,10 @@ void {funcName} (const {real_type}* A, const {real_type}* B, {real_type}* C, con
                     addr.disp = ((addr.disp - prev_disp) // mul_vl) * self.precision.value
 
                     if cursor.name == "C" and not is_za:
-                        addr.disp //= v_size
+                        # there are cases where we use SVE registers to store elements to memory
+                        # in this case we need to fix the offset calculation, through tests we found that
+                        # we need to divide by 8/4 for double/single precision elements
+                        addr.disp //= (64 // v_size)
 
                     if store:
                         # TODO: scalar_offs set to True so we can use x10 as a scalar register offset
@@ -339,6 +346,8 @@ void {funcName} (const {real_type}* A, const {real_type}* B, {real_type}* C, con
                         # TODO: cursor.name can help to differentiate A and C matrix
                         if is_za:
                             za_reg.offset %= offs_threshold
+                            if self.precision.value == Precision.SINGLE.value:
+                                addr.disp *= self.precision.value
                         else:
                             # TODO: maybe remove second part of if clause again
                             if addr.ugly_base != "x2" and cursor.name != "C": # not scalar_offs: # and prev_base.clobbered != "x2":
