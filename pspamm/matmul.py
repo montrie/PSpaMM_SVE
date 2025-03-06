@@ -328,8 +328,9 @@ class MatMul:
                 store_block = block("")
 
                 if self.use_bcst:
-                    store_block.add(bcst(self.alpha_bcst_reg, self.alpha_reg[1], "Broadcast alpha"))
+                    store_block.add(bcst(self.alpha_bcst_reg, self.alpha_reg[1] if not self.is_sme else self.beta_reg[1], "Broadcast alpha"))
                     if self.beta != 0.0 and self.beta != 1.0:
+                        # SME needs to use the alpha_reg here to broadcast beta, this is helpful for the SME version of FMLA
                         store_block.add(bcst(self.beta_bcst_reg, self.beta_reg[1], "Broadcast beta"))
 
                 print("for x in range() with regs.shape[1]={} and self.A_regs.shape[1]={}".format(regs.shape[1], self.A_regs.shape[1]))
@@ -341,9 +342,10 @@ class MatMul:
                     A_regs_cut = self.A_regs[0:min(self.A_regs.shape[0], regs.shape[0]), 0:regs.shape[1]-x]
                     if self.is_sme:
                         A_regs_cut = self.A_regs[0:min(self.A_regs.shape[0], regs.shape[1]), 0:regs.shape[1]-x]
+                        B_regs_cut = self.B_regs[0:min(self.B_regs.shape[0], regs.shape[1]), 0:regs.shape[1]-x]
                     if self.beta != 0.0:
                         # TODO: MAYBE adjust move_register_block such that we move the contents from ZA to A_regs_cut (only if this is the only call to this function that passes a C pointer and A registers)
-                        store_block.add(self.generator.move_register_block(self.C, C_ptr, Coords(), A_regs_cut, self.v_size, self.additional_regs, None, False, None, self.ldc * x))
+                        store_block.add(self.generator.move_register_block(self.C, C_ptr, Coords(), A_regs_cut if not self.is_sme else B_regs_cut, self.v_size, self.additional_regs, None, False, None, self.ldc * x))
 
                     for ir in range(A_regs_cut.shape[0]):
                         for ic in range(A_regs_cut.shape[1]):
@@ -356,10 +358,17 @@ class MatMul:
                             
                             #TODO: SME doesnt implement FMUL with ZA register as possible source/destination
                             if self.beta != 0.0 and self.beta != 1.0:
-                                store_block.add(mul(A_regs_cut[ir,ic], self.beta_reg[1], A_regs_cut[ir,ic], "beta * C", pred=pred_m))
+                                if self.is_sme:
+                                # helpful for SME FMLA: beta is in alpha_reg, C is in B_regs_cut
+                                    store_block.add(bcst(self.beta_bcst_reg, self.alpha_reg[min(1, ir // 4)], "Broadcast beta"))
+#                                    store_block.add(bcst(self.beta_bcst_reg, self.A_regs[0,0], "Broadcast beta"))
+                                    store_block.add(mul(B_regs_cut[ir,ic], self.alpha_reg[min(1, ir // 4)], B_regs_cut[ir,ic], "beta * C", pred=pred_m)) # was alpha_reg[1] before
+                                else:
+                                    store_block.add(mul(A_regs_cut[ir,ic], self.beta_reg[1], A_regs_cut[ir,ic], "beta * C", pred=pred_m))
                             if self.beta == 0.0:
                                 # TODO: switched indices upcoming regs[ir, x + ic]
-                                store_block.add(mul(regs[x + ic, ir], self.alpha_reg[1], A_regs_cut[ir, ic], "C = C + alpha * AB", pred=pred_m))
+                                # SME case uses beta_reg[1] 
+                                store_block.add(mul(regs[x + ic, ir], self.alpha_reg[1] if not self.is_sme else self.beta_reg[1], A_regs_cut[ir, ic], "C = C + alpha * AB", pred=pred_m))
                             else:
                                 #TODO: if we are in arm_sme, we might be able to define the ADD vector as a ZA vector -> needs SME2
                                 if self.is_sme:
@@ -367,30 +376,47 @@ class MatMul:
                                     # this should mimic a FMA instruction for now
                                     # TODO: extend add such that it allows adding to a ZA tile slice
                                     # mov ZA tile slice to B register
-                                    b_ir = ir if ir <= self.B_regs.shape[0] else self.B_regs.shape[0]
+                                    #b_ir = ir if ir <= self.B_regs.shape[0] else self.B_regs.shape[0]
                                     # TODO: switched indices for all upcoming regs[ir, x + ic] and B_regs[ic, b_ir] until next print statement
-                                    store_block.add(mov(regs[x + ic, ir], self.B_regs[b_ir, ic], True, "Move tile slice to vector register", pred=pred_m))
-                                    store_block.add(mul(self.B_regs[b_ir, ic], self.alpha_reg[1], self.B_regs[b_ir, ic], "alpha * AB", pred=pred_m))
+                                    #store_block.add(mov(regs[x + ic, ir], self.B_regs[b_ir, ic], True, "Move tile slice to vector register", pred=pred_m))
+                                    #store_block.add(mul(self.B_regs[b_ir, ic], self.alpha_reg[1], self.B_regs[b_ir, ic], "alpha * AB", pred=pred_m))
                                     # switched regs[ir, x + ic] with self.B_regs[]
-                                    store_block.add(add(A_regs_cut[ir, ic], self.B_regs[b_ir, ic], "C = C + alpha * AB"))
+                                    #store_block.add(add(A_regs_cut[ir, ic], self.B_regs[b_ir, ic], "C = C + alpha * AB"))
                                     # mov result from B register back to za tile sclice
-                                    store_block.add(mov(self.B_regs[b_ir, ic], regs[x + ic, ir], True, "Move vector register to tile slice", pred=pred_m))
+                                    #store_block.add(mov(self.B_regs[b_ir, ic], regs[x + ic, ir], True, "Move vector register to tile slice", pred=pred_m))
 
                                     print("ir={}, ic={}, x={}".format(ir, ic, x))
-                                    if (ic + 1) % 4 == 0:
+                                    store_block.add(mov(regs[ic, x + ir], A_regs_cut[ir, ic], True, "Move AB to vector register", pred=pred_m))
+                                    store_block.add(mov(B_regs_cut[ir, ic], regs[ic, x + ir], True, "Move C to matrix register", pred=pred_m))
+                                    if (ir + 1) % 4 == 0: # was ic before
                                         # pass
                                         # regs[ir, x+ic-4] because we need to pass the first tile slice of the vector group of ZA
                                         # in general: we pass the first vector register of the register group so we can construct the necessary group string
                                         # do we subtract 4 from ic or ir??
                                         # TODO:QEMU doesnt implement SME2, meaning the FMLA instruction is not available right now
                                         # uncomment the next two lines when the FMLA instruction is available
-                                        # TODO: regs[ir, x + ic] indexing probably needs to be swapped, we changed order of A (transposed) for SME
-                                        # store_block.add(mov(regs[ir, x + ic + 1 - 4].base, self.additional_regs[3], False))
-                                        # store_block.add(fma(self.alpha_reg[1], A_regs_cut[ir, ic + 1 - 4], regs[ir, x + ic + 1 - 4], "C = C + alpha * AB", False, pred=pred_m))
-                                        pass
+                                        # TODO: regs[ir, x + ic] indexing swapped, we changed order of A (transposed) for SME
+                                        store_block.add(bcst(self.alpha_bcst_reg, self.alpha_reg[min(1, ir // 4)], "Broadcast alpha"))
+                                        # TODO: instead of regs[].base as source, simply use 1,9,17,25 -> how do we determine which one we take?
+                                        # ir=3:1, ir=7:9, ir=11:17, ir=15:25 -> ir//4 * 8 + 1
+                                        # ir=3:1, ir=7:9, ir=11:2, ir=15:10 -> ir//8 + 1 + (ir//4 * 8 % 16)
+                                        # ir=3:1, ir=7:3, ir=11:5, ir=15:7 -> ir//4 * 2 + 1
+#                                        store_block.add(mov(regs[ic, x + ir + 1 - 4].base, self.additional_regs[3], False, "Setup base za register")) # was regs[ic, ir] before
+#                                        store_block.add(mov(ir // 8 + 1 + (ir // 4 * 8 % 16), self.additional_regs[3], False, "Setup base za register")) # was regs[ic, ir] before
+                                        # TODO: this is only valid for double precision, maybe we switch to using ZA[1], ZA[3], ZA[5], ZA{7]
+                                        #  instead of ZA[1], ZA[9], ZA[2], ZA[10]
+                                        store_block.add(mov(ir // 4 * 2 + 1, self.additional_regs[3], False, "Setup base za register")) # was regs[ic, ir] before
+                                        store_block.add(fma(self.alpha_reg[min(1, ir // 4)], A_regs_cut[ir + 1 - 4, ic], regs[ic, x + ir + 1 - 4], "C = C + alpha * AB", False, pred=pred_m)) # was A[ir,ic], regs[ic,ir] before
+                                        # pass
                                 else:
                                     store_block.add(fma(regs[ir, x + ic], self.alpha_reg[1], A_regs_cut[ir, ic], "C = C + alpha * AB", False, pred=pred_m))
                     if self.is_sme and self.beta != 0.0: # and self.beta != 1.0:
+                        # TODO: add loop that moves the result of  the fma instruction back into the right za0h.d rows
+                        pred_m = self.generator.pred_n_trues(self.bk - ic*self.v_size, self.v_size, "m")
+                        for ir in range(A_regs_cut.shape[0]):
+                            for ic in range(A_regs_cut.shape[1]):
+                                store_block.add(mov(regs[ic, x + ir], B_regs_cut[ir, ic], True, "Move C back to contiguous tile", pred=pred_m))
+                                store_block.add(mov(B_regs_cut[ir, ic], regs[ic, x + ir], True, pred=pred_m))
                         A_regs_cut = regs[:,:]
                     store_block.add(self.generator.move_register_block(self.C, C_ptr, Coords(), A_regs_cut, self.v_size, self.additional_regs, None, True, self.prefetching, self.ldc * x))
                 asm.add(store_block)
