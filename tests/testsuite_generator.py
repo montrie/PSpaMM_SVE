@@ -160,10 +160,10 @@ std::tuple<T*, T*, T*, T*, T*> pre(unsigned M, unsigned N, unsigned K, unsigned 
 
   f.close();
 
-  printf("A:\\n");
-  pretty_print(M, K, LDB, A);
-  printf("B:\\n");
-  pretty_print(K, N, LDC, B);
+  //printf("A:\\n");
+  //pretty_print(M, K, LDB, A);
+  //printf("B:\\n");
+  //pretty_print(K, N, LDC, B);
   //printf("Bsparse:\\n");
   //pretty_print(K, N, LDC, Bsparse);
 
@@ -176,13 +176,13 @@ int post(unsigned M, unsigned N, unsigned K, unsigned LDA, unsigned* LDB, unsign
   if(*LDB == 0)
     *LDB = K;
 
-  printf("GEMM result:\\n");
-  pretty_print(M, N, LDC, C);
+  //printf("GEMM result:\\n");
+  //pretty_print(M, N, LDC, C);
 
   gemm_ref(M, N, K, LDA, *LDB, LDC, *ALPHA, *BETA, A, B, Cref);
 
-  printf("\\nReference:\\n");
-  pretty_print(M, N, LDC, Cref);
+  //printf("\\nReference:\\n");
+  //pretty_print(M, N, LDC, Cref);
     
   for(int i = 0; i < M; i++) {
     for(int j = 0; j < N; j++) {
