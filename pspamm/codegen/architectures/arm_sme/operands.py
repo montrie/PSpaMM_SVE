@@ -157,8 +157,7 @@ class Register_ZA(Register):
 r = lambda n: Register_ARM(AsmType.i64, "x" + str(n))
 xzr = Register_ARM(AsmType.i64, "xzr")
 z = lambda n, prec: Register_ARM(AsmType.f64x8, "z" + str(n) + "." + prec)
-za = lambda prec, tile, base, offset: Register_ZA(AsmType.za, f"ZA.{prec}", tile, base, offset)  # TODO: info of form (base, offset)
-# TODO: maybe just create a new Register class for the ZA tile to make this easier
+za = lambda prec, tile, base, offset: Register_ZA(AsmType.za, f"ZA.{prec}", tile, base, offset)
 
 
 class MemoryAddress_ARM(MemoryAddress):

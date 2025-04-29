@@ -88,6 +88,7 @@ void {funcName} (const {real_type}* A, const {real_type}* B, {real_type}* C, con
         # the maximum number of tiles in the ZA register is dependant on the size of its elements (half-words, singles, doubles)
         # it is also inversly proportional to the maximum allowed immediate offset when accessing a tile slice
         # for doubles there are 8 tiles, for singles there are 4 tiles, etc. until we get only 1 tile for 8 byte elements in ZA
+        # TODO: not used for now, might be helpful later
         return 16 // self.get_tile_slice_max_offset()
 
     # taken from https://stackoverflow.com/questions/14822184/is-there-a-ceiling-equivalent-of-operator-in-python
@@ -107,33 +108,21 @@ void {funcName} (const {real_type}* A, const {real_type}* B, {real_type}* C, con
         self.bk = bk
         
         vm = self.ceil_div(bm, v_size)              # vm can be 0 if bm < v_size -> makes ceil_div necessary
-        vk = self.ceil_div(bk, v_size)
         vn = self.ceil_div(bn, v_size)
-        # assert ((bn + vk) * vm + bn * vk <= 32)     # Needs to fit in SVE z registers
         assert ((vm + vn) * bk <= 32)  # Needs to fit in SVE z registers
         prec = self.precision_to_suffix() #"d" if self.get_precision() == Precision.DOUBLE else "s"
         c_mat_range = self.get_v_size
 
-        print(f"bm={bm}, bn={bn}, bk={bk}")
         # use max(vm, 1) in case bm < v_size, otherwise we get no A_regs/C_regs
-        # TODO: adjust the register creation according to scripts/max_arm_sme.py
-        # TODO: we prob. need to introduce vn to vectorize the B_reg loads
-#        A_regs = Matrix([[z(max(vm, 1) * c + r , prec) for c in range(bk)] for r in range(max(vm, 1))])
         A_regs = Matrix([[z(max(vm, 1) * c + r , prec) for r in range(max(vm, 1))] for c in range(bk)])
-        B_regs = Matrix([[z(max(vm, 1) * bk + vn * r + c, prec) for c in range(vn)] for r in range(bk)]) # switched bn with vn
-#        B_regs = Matrix([[z(max(vm, 1) * bk + bn * r + c, prec) for c in range(bn)] for r in range(bk)])
-# TODO: inner list should have c running from 0 to num_rows in a tile, n from 0 to number of tiles depending on data type
+        B_regs = Matrix([[z(max(vm, 1) * bk + vn * r + c, prec) for c in range(max(vn, 1))] for r in range(bk)]) # switched bn with vn
+        # inner list should have c running from 0 to num_rows in a tile, n from 0 to number of tiles depending on data type
         C_regs = Matrix([[za(prec, 0, r(c // self.get_tile_slice_max_offset() + 12), c) for c in range(self.get_v_size())] for n in range(max(vm, 1))])
-#         C_regs = Matrix([[za(prec, 0, r(13), c) for c in range(bn)] for n in range(max(vm, 1))])
-#        C_regs = Matrix([[z(32 - max(vm, 1) * bn + max(vm, 1) * c + r, prec) for c in range(bn)] for r in range(max(vm, 1))])
 
-        # TODO: needs to be the first entry in B_regs, I think we can get away again with not statically assigning an alpha/beta register
+        # static a_reg config is used during FMLA to ensure that the vector containing alpha is not accidentally part of the source vector group
         a_reg = [4, 0]
-        b_reg = max(vm, 1) * bk # vm*bk + vn*(bk-1) + vn - 1 + 1 #max(vm, 1) * bk
-#        b_reg = vm*bk + vn*(bk-1) + vn - 1 + 1 #max(vm, 1) * bk
-#        alpha_reg = [z(b_reg, prec), z(b_reg, prec)]
-        alpha_reg = [z(a_reg[0], prec), z(a_reg[1], prec)] #, z(a_reg[2], prec)]
-#        beta_reg = [z(a_reg, prec), z(a_reg, prec)]
+        b_reg = max(vm, 1) * bk
+        alpha_reg = [z(a_reg[0], prec), z(a_reg[1], prec)]
         beta_reg = [z(b_reg + 1, prec), z(b_reg + 1, prec)]
 
         starting_regs = [r(0), r(1), r(2), r(3), r(4), r(5), r(6)]  # r6 is needed for predicate creation, r5 is added in init_prefetching()
@@ -161,7 +150,6 @@ void {funcName} (const {real_type}* A, const {real_type}* B, {real_type}* C, con
 
         # initialize register w12 - w15 which are needed for ZA tile slice access
         asm = block("Register based scaling using w13 as the base register to access ZA tile slices")
-        max_tiles = self.get_max_tile_number() #TODO: might be not necessary after all
         max_offset = self.get_tile_slice_max_offset()
         # TODO: not sure if self.v_len is correct here, we need an 8 for doubles and a 16 for singles
         for i in range(self.get_v_size()):
@@ -240,13 +228,19 @@ void {funcName} (const {real_type}* A, const {real_type}* B, {real_type}* C, con
         action = "Store" if store else "Load"
         asm = block("{} {} register block @ {}".format(action, cursor.name, block_offset))
         prec = self.get_precision()
-        is_za = registers[0, 0].value.startswith("ZA")# cursor.name == "C"
+        is_za = registers[0, 0].value.startswith("ZA")
 
         # Determine whether we use prefetching and if we are currently operating on C
         do_prefetch = self.prefetch_reg is not None and cursor.name == "C" and store
 
         b_row, b_col, i, _ = cursor.get_block(cursor_ptr, block_offset)
 
+        if cursor.name == "A" and not store:
+            # loading A block for microkernel, need to account for last bk block possibly being shorter than previous bk blocks
+            bk_overhead = min(rows, cursor.r - (block_offset.down * rows))  # yields bk if we process a whole bk block, or the number of rows in the shorter bk block
+            process_overhead = bk_overhead == rows
+            rows = bk_overhead
+    
         cur11 = 0
         #TODO: figure out appropriate threshold (the 16 // self.v_len may still not be optimal; especially if 16 % self.v_len != 0, e.g. 384 bit)
         threshold = 1 if self.is_sparse else (16 // self.v_len)  # uses whole 256 byte cache line, as one SVE-512 vector = 64 bytes
@@ -260,41 +254,26 @@ void {funcName} (const {real_type}* A, const {real_type}* B, {real_type}* C, con
         prev_disp = 0
         offs_threshold = self.get_v_size() // self.v_len
         prev_overhead = True
-        scalar_offs = is_za # cursor.name == 'C'  # scalar offsets are necessary for loading/storing the C matrix, but not for loading the A matrix
+        scalar_offs = is_za  # scalar offsets are necessary for loading/storing the C matrix, but not for loading the A matrix
         # this gives us the base register of 'cursor' irrespective of the dummy offset we use
         prev_base = cursor.look(cursor_ptr, block_offset, Coords(down=0, right=0))[0].base
-        if store:
-            pass
 
-        print(f"Name={cursor.name}")
         for ic in range(cols):
             for ir in range(rows):
-                # cond = (mask is None) or (mask[ir, ic])
-                # if self.k != self.n:
-                #     ir = ir * 2 + 1
-                cond = (mask is None) or (mask[ir, ic]) # TODO: switch to addressing row ir * 2 + 1
-                # if self.k != self.n:
-                #     ir = (ir - 1) // 2
-                if cond: # TODO: switch to addressing row ir * 2 + 1
+                cond = (mask is None) or (mask[ir, ic])
+                if cond:
                     processed = ir * v_size
                     za_reg = registers[ir, ic] if is_za else None
-                    # TODO: delete?
-                    # p = self.pred_n_trues(b_row - processed, v_size, None, False) if not is_B else self.pred_n_trues(v_size, v_size, None, True)
-                    # p_zeroing = self.pred_n_trues(b_row - processed, v_size, "z", False) if not is_B else self.pred_n_trues(v_size, v_size, "z", True)
 
                     # setup predicate registers
-                    num_elems = v_size #if is_B else b_row - processed
+                    num_elems = v_size  # TODO: for now only allow multiples of v_size
                     p = self.pred_n_trues(num_elems, v_size, None, is_B)
                     p_zeroing = self.pred_n_trues(num_elems, v_size, "z", is_B)
 
-                    print(f"ir, ic = {ir}, {ic}")
-                    # cell_offset = Coords(down=ir * v_size, right=ic) # TODO: why is it like that?
                     if not is_za:
-                        # cursor.name == "A":
-                        cell_offset = Coords(down=ir, right=ic * v_size) # TODO: why is it like that?
+                        cell_offset = Coords(down=ir, right=ic * v_size)
                     else:
-                        # cursor.name == "C"
-                        cell_offset = Coords(down=ic, right=ir * v_size) # TODO: why is it like that?
+                        cell_offset = Coords(down=ic, right=ir * v_size)
 
                     # addr = base "pointer" + relative offset in bytes
                     addr, comment = cursor.look(cursor_ptr, block_offset, cell_offset)
@@ -322,12 +301,6 @@ void {funcName} (const {real_type}* A, const {real_type}* B, {real_type}* C, con
                         addr.disp //= (64 // v_size)
 
                     if store:
-                        # TODO: scalar_offs set to True so we can use x10 as a scalar register offset
-                        # if cont_counter % offs_threshold == 0:
-                        #     # TODO: might result in float value?
-                        #     za_row = cont_counter #/ offs_threshold
-                        #     asm.add(mov(za_row, za_reg.base, False))
-                        # print(cursor.name)
                         if is_za:
                             za_reg.offset %= offs_threshold
                             if self.precision.value == Precision.SINGLE.value:
@@ -343,23 +316,15 @@ void {funcName} (const {real_type}* A, const {real_type}* B, {real_type}* C, con
                             self.prefetch_count = 0
                         self.prefetch_count += 1
                     else:
-                        # TODO: cursor.name can help to differentiate A and C matrix
                         if is_za:
                             za_reg.offset %= offs_threshold
                             if self.precision.value == Precision.SINGLE.value:
+                                # TODO: quick fix of disp calculation for single prec, check again later
                                 addr.disp *= self.precision.value
                         else:
-                            # TODO: maybe remove second part of if clause again
                             if addr.ugly_base != "x2" and cursor.name != "C": # not scalar_offs: # and prev_base.clobbered != "x2":
                                 addr.disp //= self.precision.value
-                            # TODO: FOR NOW KEEP THE NEXT TWO LINES; MIGHT BE NEEDED LATER AFTER ALL
-                            # if addr.ugly_base == "x11" and cursor.name == "C":
-                            #     addr.disp *= self.precision.value
-
-                            # we load elements of C into the ZA register
-                            # if cont_counter % offs_threshold == 0:
-                            #     za_row = cont_counter
-                            #     asm.add(mov(za_row, za_reg.base, False))
+                            
                         asm.add(ld(addr, registers[ir, ic], True, comment, pred=p_zeroing, is_B=is_B, scalar_offs=scalar_offs,
                                    add_reg=additional_regs[2], za=za_reg))
 
@@ -371,14 +336,9 @@ void {funcName} (const {real_type}* A, const {real_type}* B, {real_type}* C, con
         """
         Zeros the C matrix registers. Is only called in matmul.py when 'alpha == 1.0 and beta != 0.0' evaluates to False
         """
-        # TODO: maybe we can zero the ZA register here too?
         rows, cols = registers.shape
         asm = block("zero registers")
 
-        # for ic in range(cols):
-        #     for ir in range(rows):
-        #         asm.add(mov(additional_regs[1], registers[ir, ic], True))
-        # TODO: there has to be a better way to zero the ZA reigster -> See inlineprinter
         asm.add(mov(additional_regs[1], registers[0, 0], True))
 
         return asm
@@ -405,26 +365,18 @@ void {funcName} (const {real_type}* A, const {real_type}* B, {real_type}* C, con
           It does not modify any cursor pointers.
         """
 
-        # TODO: where do we have a call to move_register_block that defines is_B? seems like is_B is never set but always uses its default value?
-
         asm = block("Block GEMM microkernel")
         # A=KxM, B=KxN
         """block_row, block_col, (start)index, pattern_matrix (true/false)"""
-        # bm, bk, aidx, apattern = A.get_block(A_ptr, to_A_block)
         bk, bm, aidx, apattern = A.get_block(A_ptr, to_A_block)
-        print(f"bm, bk = {bm}, {bk}")
         bk, bn, bidx, bpattern = B.get_block(B_ptr, to_B_block)
-        print(f"bk, bn = {bk}, {bn}")
+        # check if we process the overhead block of bk
+        bk_overhead = min(bk, A.r - (to_A_block.down * bk))  # yields bk if we process a whole bk block, or the number of rows in the shorter bk block
+        process_overhead = bk_overhead == bk
+        bk = bk_overhead
 
-        #TODO: DELETE!
-        print(f"bm, bn, bk = {bm}, {bn}, {bk}")
-
-        # tell sparse_mask() that we use sve
-        # TODO: explain why this is necessary!
-        fixed_to_B_block = to_B_block
-        # if self.is_sparse and self.k == self.n:
-        #     fixed_to_B_block = Coords(down=to_B_block.right, right=to_B_block.down, absolute=to_B_block.absolute)
-        mask = sparse_mask(A_regs, A, A_ptr, to_A_block, B, B_ptr, fixed_to_B_block, v_size, is_sve=True, is_sme=True)
+        # tell sparse_mask() that we use sve and sme
+        mask = sparse_mask(A_regs, A, A_ptr, to_A_block, B, B_ptr, to_B_block, v_size, is_sve=True, is_sme=True)
         asm.add(self.move_register_block(A, A_ptr, to_A_block, A_regs, v_size, additional_regs, mask, store=False))
 
         # x = 0;
@@ -447,73 +399,31 @@ void {funcName} (const {real_type}* A, const {real_type}* B, {real_type}* C, con
         # for ld1rd (double prec): immediate offset is multiple of 8 in range of 0 to 504
         # in both cases: instruction encodes the immediate offset within 6 bits
         max_offs = (2 ** 6 - 1) * multiple
-# TODO: switch 'for bni in range(bn)' to a v_sized version using Vn = self.ceil_div(bn, v_size) -> for Vni in range(Vn):
         Vn = self.ceil_div(bn, v_size)
-        Vk = self.ceil_div(bk, v_size)
-        print(v_size)
 
         # TODO: if we want to interleave loads and fmlas, we can merge the following two loops within the bni loop
         for Vmi in range(Vm):
-            # set to all v_size predicates to true, we want to replicate a B element into a whole vector
-            # p_zeroing = self.pred_n_trues(v_size, v_size, "z", True)
-            for bki in range(bk):  # inside this k-block #TODO: was Vk before
-                # TODO: bni needs to iterate over bn in steps of v_size
+            for bki in range(bk):  # inside this k-block
                 for Vni in range(Vn):  # inside this n-block
-                    # TODO: we want to process whole vectors of B elements with length v_size
+                    # process whole vectors of B elements with length v_size
                     p_zeroing = self.pred_n_trues(bn - Vni * v_size, v_size, "z", True)
                     to_cell = Coords(down=bki, right=Vni*v_size)
-                    # to_cell = Coords(down=bki*v_size, right=Vni)
-                    # if B.has_nonzero_vector(B_ptr, to_B_block, to_cell, v_size):
-                    #if mask is None or mask[Vni, bki]:
                     if self.is_sparse:
-                        # if self.k != self.n:
-                        #     Vni = Vni * 2 + 1
-                        # cond = mask[Vni, bki] # TODO: switch to addressing row ir * 2 + 1
-                        cond = mask[bki, Vni] # TODO: was Vni, bki before
-                        # if self.k != self.n:
-                        #     Vni = (Vni -1) // 2
+                        cond = mask[bki, Vni]
                     else:
                         cond = B.has_nonzero_vector(B_ptr, to_B_block, to_cell, v_size)
-                        # cond = B.has_nonzero_cell(B_ptr, to_B_block, to_cell)
                     if cond:
-                        B_cell_addr, B_comment = B.look(B_ptr, to_B_block, to_cell, vector=True)#self.is_sparse)
-                        if bki == 0:
-                            print(f"B_ptr={B_ptr}, to_B_block={to_B_block}, to_cell={to_cell}")
-                            print(f"B_cell_addr.disp={B_cell_addr.disp}")
+                        B_cell_addr, B_comment = B.look(B_ptr, to_B_block, to_cell, vector=True)
                         if B_regs[bki, Vni] not in bs:
-                            # max_offs is the maximum allowed immediate offset when using ld1rd/ld1rw to broadcast a scalar value
-                            # TODO: swtich to processing vectors of B elements
-
-                            # count how many elements we have processed between last step and this step
-                            # TODO: defining prev_disp like this might be wrong, check if this works
-                            if self.is_sparse:
-                                # B_cell_addr.disp *= self.get_v_size()
-                                pass
-                            else:
-                                # B_cell_addr.disp += self.get_v_size() * (bki * self.n + Vni * self.k - bki)# self.get_v_size() * bki * self.n#(self.n // self.bn) #TODO: change to multiplication with 8 or 16, idk if we need 16 or 4 for single prec 
-                                # B_cell_addr.disp *= self.get_v_size()
-                                pass
-
-                            print(f"B_cell_addr.disp={B_cell_addr.disp}")
                             cont_counter = ((B_cell_addr.disp - prev_disp) // mul_vl)
                             larger_max_offset = cont_counter > max_mem_ins_mult
 
                             if larger_max_offset or (prev_overhead and B_cell_addr.disp > 0):
-                            # if B_cell_addr.disp > max_offs:
-                                # if B_cell_addr.disp - cur11 > 0 and B_cell_addr.disp - cur11 <= max_offs:
-                                #     B_cell_addr.disp -= cur11
-                                # else:
-                                #     asm.add(add(B_cell_addr.disp, additional_regs[0], "", B_cell_addr.base))
-                                #     cur11 = B_cell_addr.disp
-                                #     prev_disp = cur11
-                                #     B_cell_addr.disp = 0
-
                                 offset_comment = "disp > {}".format(max_offset) if larger_max_offset else "DEFINE COMMENT"
                                 asm.add(add(B_cell_addr.disp, additional_regs[0], offset_comment, B_cell_addr.base))
                                 prev_disp = B_cell_addr.disp
                                 B_cell_addr.base = additional_regs[0]
                                 prev_base = B_cell_addr.base
-                            # else:
                             B_cell_addr.base = prev_base
                             B_cell_addr.disp = ((B_cell_addr.disp - prev_disp) // mul_vl)
 
@@ -525,30 +435,18 @@ void {funcName} (const {real_type}* A, const {real_type}* B, {real_type}* C, con
         for Vmi in range(Vm):
             p_merging = self.pred_n_trues(bm - Vmi * v_size, v_size, "m", False)
             end_index = bm if Vmi + 1 == Vm else Vmi * v_size + v_size  # end_index helps us print the right index ranges
-            for bki in range(bk):  # inside this k-block #TODO: was Vk before
-                # TODO: bni needs to iterate over bn in steps of v_size
+            for bki in range(bk):  # inside this k-block 
                 for Vni in range(Vn):  # inside this n-block
-                    # TODO: similar to p_merging, we probably need to define a Bn = max(self.ceil_div(bn, v_size), 1) and iterate using Bni
                     p_merging2 = self.pred_n_trues(bn - Vni * v_size, v_size, "m", True)
                     to_cell = Coords(down=bki, right=Vni*v_size)
-                    # if B.has_nonzero_vector(B_ptr, to_B_block, to_cell, v_size):
-                    # if mask is None or mask[Vni, bki]:
                     if self.is_sparse:
-                        # if self.k != self.n:
-                        #     Vni = Vni * 2 + 1
-                        # cond = mask[Vni, bki] # TODO: switch to addressing row ir * 2 + 1
-                        cond = mask[bki, Vni] # TODO: was Vni, bki before
-                        # if self.k != self.n:
-                        #     Vni = (Vni -1) // 2
+                        cond = mask[bki, Vni]
                     else:
                         cond = B.has_nonzero_vector(B_ptr, to_B_block, to_cell, v_size)
-                        # cond = B.has_nonzero_cell(B_ptr, to_B_block, to_cell)
                     if cond:
                         B_cell_addr, B_comment = B.look(B_ptr, to_B_block, to_cell, vector=self.is_sparse)
                         comment = "C[{}:{},{}] += A[{}:{},{}]*{}".format(Vmi * v_size, end_index, Vni * v_size, Vmi * v_size,
                                                                          end_index, bki, B_comment)
-                        print(f"bm={bm}, bn={bn}")
-                        # TODO: was A_regs[Vmi, bki] before
                         asm.add(fmopa(C_regs[Vmi, Vni], A_regs[bki, Vmi], B_regs[bki, Vni], pred=p_merging, pred2=p_merging2, comment=comment))
         return asm
 

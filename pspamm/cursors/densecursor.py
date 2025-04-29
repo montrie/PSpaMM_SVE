@@ -36,7 +36,8 @@ class DenseCursor(Cursor):
     def offset(self,
                src_block: Coords,
                dest_block: Coords,
-               dest_cell: Coords
+               dest_cell: Coords,
+               vector: bool = False
               ) -> int:
         # TODO: Why not make offset compute the 1D distance
         # from current pointer to desired logical cell instead?
@@ -49,12 +50,15 @@ class DenseCursor(Cursor):
         Bri, Bci = dest_block.down, dest_block.right
         bri, bci = dest_cell.down, dest_cell.right
 
-        # return (Bci*self.bc + bci) * self.ld + Bri*self.br + bri
+        # if not vector:
+        #     return (Bci*self.bc + bci) * self.ld + Bri*self.br + bri
+        # else:
         return Bci*self.bc + bci + (Bri*self.br + bri) * self.ld
 
     def move(self,
              src: CursorLocation,
-             dest_block: Coords
+             dest_block: Coords,
+             vector: bool = False
             ) -> Tuple[AsmStmt, CursorLocation]:
 
         if dest_block.absolute:
@@ -63,7 +67,7 @@ class DenseCursor(Cursor):
             dest_block_abs = src.current_block + dest_block
 
         comment = "Move {} to {}".format(self.name,str(dest_block))
-        src_offset = self.offset(src.current_block, Coords(), src.current_cell)
+        src_offset = self.offset(src.current_block, Coords(), src.current_cell, vector)
         dest_offset = self.offset(src.current_block, dest_block, src.current_cell)
         rel_offset = (dest_offset - src_offset) * self.scalar_bytes
         dest = CursorLocation(dest_block_abs, src.current_cell)

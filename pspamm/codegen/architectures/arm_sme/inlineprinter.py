@@ -43,14 +43,6 @@ class InlinePrinter(Visitor):
         b = stmt.bcast_src.ugly
         m = stmt.mult_src.ugly
         a = stmt.add_dest.ugly_mem_vector_group_fmla
-#        if "z0" in m:
-#            a = a.replace("#0", "#1")
-#        if "z4" in m:
-#            a = a.replace("#0", "#3")
-#        if "z8" in m:
-#            a = a.replace("#0", "#")
-#        if "z12" in m:
-#            a = a.replace("#0", "#")
         group_num = int(a[-2])
         zn_index = int(m[1:-2])  # should give us the number of the SVE vector
         zn_end_index = zn_index + group_num - 1
@@ -60,9 +52,6 @@ class InlinePrinter(Visitor):
         p = self.p_string(stmt.pred)
 
         s = "fmla {}, {}, {}".format(a, mult_str, b)
-
-        #TODO: QEMU DOES NOT IMPLEMENT THE SME FMLA BC ITS A SME2 FEATURE
-        # s = "FMLA NOT IN QEMU"
 
         self.addLine(s, stmt.comment)
 
@@ -90,12 +79,8 @@ class InlinePrinter(Visitor):
         if a != b:
             s1 = "mov {}, {}{}".format(a, p, b)
             self.addLine(s1, "move tile slice {} into {}".format(stmt.src.ugly_offset, a))
-            # s2 = "movprfx {}, {}".format(a.split(".")[0], b.split(".")[0])
-            # self.addLine(s2, "move {} into {}".format(b, a))
             b = a
 
-        # TODO: alpha*A*B will remain as an fmul instruction
-        #       beta*C: there seems to be no multiplication of ZA slices, we need to mov/ld a C vector into an SVE register, then multiply it with beta and move the result back into ZA
         s = "fmul {}, {}{}, {}".format(a, p, b, m)
         self.addLine(s, stmt.comment)
 
@@ -146,7 +131,7 @@ class InlinePrinter(Visitor):
                 s = "add {}, {}, {}".format(stmt.dest.ugly, stmt.additional.ugly, stmt.src.ugly)
             elif stmt.dest.ugly.startswith("z"):
                 # TODO: is there a better way to determine whether dest is a ZA tile slice?
-                p = "p7/m, "# self.p_string(stmt.pred)
+                p = "p7/m, " # statically use p7 for now, later: self.p_string(stmt.pred)
                 dest = stmt.dest.ugly
                 src = stmt.src.ugly
                 s = "fadd {}, {}{}, {}".format(dest, p, dest, src)
@@ -174,27 +159,6 @@ class InlinePrinter(Visitor):
         if stmt.typ == AsmType.f64x8:
             p = self.p_string(stmt.pred)
             if not isinstance(stmt.src, Label):
-                # test = stmt.src.typeinfo
-                # test2 = stmt.dest.typeinfo
-                # testtype = AsmType.za
-                # testtype2 = AsmType.za
-                # testresult = testtype == testtype2
-                # print(test == testtype)
-                # print(testresult)
-                # test3 = stmt.src.typeinfo.name
-                # testresult3 = test3.startswith('za')
-                # TODO: why does the line below return false??
-                # if stmt.src.typeinfo == AsmType.za:
-                # if stmt.src.typeinfo.name.startswith('za'):
-                #     # self.addLine("src is za", "DEBUG")
-                #     src_str = stmt.dest.ugly
-                #     dest_str = stmt.dest.ugly
-                # if stmt.dest.typeinfo.name.startswith('za'):
-                #     # self.addLine("dest is za", "DEBUG")
-                #     src_str = stmt.src.ugly
-                #     dest_str = stmt.dest.ugly
-                # predicate is only used when we move data into/out of the ZA register
-                # TODO: use MOVA instead?
                 if stmt.comment == "Move C to matrix register":
                     mem_acc_str, base, offs, abs_offs = self.za_abs_offs(stmt.dest)
                     tile = self.get_fma_tile_slice(stmt.dest, base, offs, abs_offs)
@@ -206,10 +170,8 @@ class InlinePrinter(Visitor):
                     mem_acc_str, base, offs, abs_offs = self.za_abs_offs(stmt.src)
                     tile = self.get_fma_tile_slice(stmt.src, base, offs, abs_offs)
                     src_str = "za{}h.{}[{}]".format(tile, stmt.dest.ugly_precision, mem_acc_str)
-                # s = "mov {}, {}{}".format(stmt.dest.ugly, p, src_str)
                 s = "mov {}, {}{}".format(dest_str, p, src_str)
             else:
-                # s = "fmov {}, {}".format(stmt.dest.ugly, src_str)
                 s = "zero {za}"
         else:
             if stmt.comment == "Setup base za register":
@@ -221,8 +183,6 @@ class InlinePrinter(Visitor):
     def visitLoad(self, stmt: LoadStmt):
         if isinstance(stmt.src, Label):
             src_str = "#" + stmt.src.ugly
-# TODO: ugly_offset and scalar_offs might be helpful to include the
-
         elif stmt.src.ugly_offset != "0" and stmt.scalar_offs:
             self.addLine("mov {}, #{}".format(stmt.add_reg.ugly, stmt.src.ugly_offset), "move immediate offset into {}".format(stmt.add_reg.ugly))
             # TODO: adapt ugly_lsl_shift to account for possible single precision instead of double precision
@@ -231,31 +191,17 @@ class InlinePrinter(Visitor):
             src_str = stmt.src.ugly if not stmt.is_B else stmt.src.ugly_no_vl_scaling
 
         p = self.p_string(stmt.pred)
-        # TODO: this can be done better
         prec = "d" if stmt.dest.ugly_precision == "d" else "w"
         is_B = "r" if stmt.is_B else ""
 
         if stmt.typ == AsmType.i64:
             s = "add {}, {}, {}".format(stmt.dest.ugly, stmt.dest.ugly, src_str)
-# TODO: stmt.dest is prob. ZA tile -> we can only load a slice so do we loop over the X tile slices here?
-#       we don't have access to the size of C here so the looping (+ adjustment of access base reg) should happen in generator.py
-# TODO: maybe we can assign C_reg the X amount of different ZA slices that exist
-# TODO: do we still load only one element of B and broadcast it across a whole SVE vector?
-# TODO: maybe use str if dest.ugly_offset and za.ugly_offset are equal?
-
         elif stmt.typ == AsmType.f64x8 and stmt.aligned:
             if stmt.za != None:
-                # if stmt.src.ugly_offset == stmt.za.ugly_offset:
-                #     s = "ldr {}, {}".format(stmt.za.ugly, src_str)
-                # else: 
-                #     s = "ld1{}{} {}, {}{}".format(is_B, prec, stmt.dest.ugly, p, src_str)
                 if stmt.src.ugly_offset == "0":
                         src_str = "[{}]".format(stmt.src.ugly_base)
                 s = "ld1{}{} {{{}}}, {}{}".format(is_B, prec, stmt.dest.ugly, p, src_str)
             else:
-                # if stmt.is_B:
-                #     s = "ld1r{} {}, {}{}".format(prec, stmt.dest.ugly, p, src_str)
-                # else:
                 s = "ld1{}{} {}, {}{}".format(is_B, prec, stmt.dest.ugly, p, src_str)
         else:
             raise NotImplementedError()
@@ -277,11 +223,6 @@ class InlinePrinter(Visitor):
 
         if stmt.typ == AsmType.i64:
             s = "add {}, {}, {}".format(stmt.dest.ugly, stmt.dest.ugly, dest_str)
-# TODO: same concerns as for the load instruction
-# TODO: there IS a store instruction that directly stores a row of ZA to memory, we DON'T need to MOVA the ZA slice
-#       into a Z register and then store that register
-#       src is the SVE register, dest is the memory we store to, za is the ZA tile slice
-# TODO: maybe use str if dest.ugly_offset and za.ugly_offset are equal?
         elif stmt.typ == AsmType.f64x8 and stmt.aligned:
             if stmt.za != None:
                 if stmt.scalar_offs:
@@ -329,16 +270,8 @@ class InlinePrinter(Visitor):
         base = int(za_slice.ugly_base[1:])
         offset = int(za_slice.ugly_offset)
         abs_offs = (base - 12) * za_slice.ugly_max_tile_slice_offset + offset
-        # TODO: for doubles, the fmla instruction skips a row to store the result of the VGx4 result
-        # maybe for singles it skips none/ another number of rows?
-        # ugly_max_tile_slice_offset is 2 for doubles and 4 for singles, idk if the 4 leads to correct 
-        # calculations in the case of single precision
         za_base = str(abs_offs % (4 // za_slice.ugly_max_tile_slice_offset * za_slice.ugly_max_tile_slice_offset) + 12)
-#        za_offset = str(abs_offs // (4 // za_slice.ugly_max_tile_slice_offset * za_slice.ugly_max_tile_slice_offset)) # str(abs_offs % za_slice.ugly_max_tile_slice_offset)
-        # alle 8 offsets landen wir wieder in der selben tile aber ugly_max_tile_slice_offset zeilen weiter
-        # after 8 vector processed by fma, we go back to a tile that we already visited, the offset calculation below is 
-        # therefore increased by 1 compared to the last time we visited the same tile -> this should check out with how ZA is implemented in the cpu
-        za_offset = str(abs_offs // 8) # * za_slice.ugly_max_tile_slice_offset)
+        za_offset = str(abs_offs // 8) 
         return "w{}, #{}".format(za_base, za_offset), za_base, za_offset, abs_offs
 
     def get_fma_tile_slice(self, za_slice: Register, base: str, offs: str, abs_offs: int):

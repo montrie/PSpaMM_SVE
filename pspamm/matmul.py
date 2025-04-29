@@ -15,12 +15,6 @@ from pspamm.cursors import *
 import pspamm.architecture
 import numpy
 
-#TODO: DELETE
-import os
-import signal
-import time
-import sys
-
 
 def decompose_pattern(k, n, pattern:Matrix[bool], bk:int, bn:int, is_sme:bool) -> Tuple[Matrix[int], List[Matrix[bool]]]:
     Bk,Bn = k//bk, n//bn
@@ -96,16 +90,6 @@ class MatMul:
                  **kwargs  # Accept and ignore args which don't belong
                  ) -> None:
 
-        if "DEBUG_SUBPROCESS" in os.environ:
-            # if os.environ["DEBUG_SUBPROCESS"] == 1:
-            pid = os.getpid()
-            print(f"Waiting for debugger to attach to PID {pid}...", file=sys.stderr)
-            debug_flag_file = f"/tmp/debugger_attached_{pid}"
-            with open(debug_flag_file, "w") as f:
-                f.write("waiting")
-            while not os.path.exists(f"/tmp/debugger_continue_{pid}"):
-                time.sleep(1)  # Poll until a "continue" file is created
-
         self.m = m
         self.n = n
         self.k = k
@@ -151,7 +135,6 @@ class MatMul:
         self.is_sve = arch.startswith("arm_")
         self.is_sme = arch == "arm_sme"
         # define which architectures need to use an explicit broadcast, necessary for alpha/beta values
-        # TODO: does arm_sme use explicit broadcasting?
         self.use_bcst = arch in ["arm", "arm_sve", "arm_sme", "hsw"]
 
         if self.is_sve:
@@ -172,8 +155,7 @@ class MatMul:
             elif arch == 'arm_sve':
                 (self.bm, self.bn) = pspamm.scripts.max_arm_sve.getBlocksize(m, n, bk, self.v_size)
             elif arch == 'arm_sme':
-                # TODO: adjust for the final SME getBlocksize script
-                (self.bm, self.bn) = pspamm.scripts.max_arm_sme.getBlocksize(m, n, bk, self.v_size)
+                (self.bm, self.bn, self.bk) = pspamm.scripts.max_arm_sme.getBlocksize(m, n, bk, self.v_size)
         else: 
             self.bm = bm
             self.bn = bn
@@ -231,7 +213,7 @@ class MatMul:
         self.alpha_bcst_reg, self.beta_bcst_reg = self.starting_regs[3], self.starting_regs[4]
 
 
-# TODO: create transposed cursor for A
+        # create transposed cursor of A for SME outer product
         if not self.is_sme:
             self.A = DenseCursor("A", self.starting_regs[0], self.m, self.k, self.lda, self.bm, self.bk, self.precision.value)
         else:
@@ -276,50 +258,28 @@ class MatMul:
                 if self.beta != 1.0:
                     if self.use_bcst:
                         asm.add(bcst(self.beta_bcst_reg, self.beta_reg[1], "Broadcast beta"))
-#                        print("A regs shape:")
-#                        print(self.A_regs.shape)
-#                        print("B regs shape:")
-#                        print(self.B_regs.shape)
-#                        print("C regs shape:")
-#                        print(regs.shape)
                     for ic in range(regs.shape[1]):
                         for ir in range(regs.shape[0]):
-                            # TODO: SME needs a separate pred_m because the row block dimension is bk instead of bm
                             pred_m = None 
-                            if self.is_sve:# and not self.is_sme:
-                                # SME has bk as block row dimension, the declaration below might cause problems for SME
-                                pred_m = self.generator.pred_n_trues(self.bm - ir * self.v_size, self.v_size, "m")
-                            # TODO: is there a better way to handle SME not allowing multiplication of ZA rows with vector registers?
+                            # SME needs a separate pred_m because the row block dimension is bk instead of bm
                             if self.is_sme:
-                                # TODO: SME needs a separate pred_m because the row block dimension is bk instead of bm
+                                # is there a better way to handle SME not allowing multiplication of ZA rows with vector registers?
                                 pred_m = self.generator.pred_n_trues(self.bk - ir * self.v_size, self.v_size, "m")
-                                #TODO: add MOV of ZA row to vector register, use A_regs as intermediate registers to perform multiplication, there should be enough of them
-#                                print(self.A_regs)
-#                                print("\n")
-#                                print(self.B_regs)
-#                                print("\n")
-#                                print(self.C_regs)
-#                                print("\n")
-#                                print(pred_m.value)
-                                # TODO: swapped indices of A_regs[ir,ic] because we transposed A for SME
+                                # swapped indices of A_regs[ir,ic] because we transposed A for SME
                                 asm.add(mov(regs[ir,ic], self.A_regs[ic,ir], True, "move ZA row to vector register", pred=pred_m))
                                 asm.add(mul(self.A_regs[ic,ir], self.beta_reg[1], self.A_regs[ic,ir], "C = beta * C", pred=pred_m))
                                 asm.add(mov(self.A_regs[ic,ir], regs[ir,ic], True, "move vector register to ZA row", pred=pred_m))
+                            elif self.is_sve:# and not self.is_sme:
+                                # SME has bk as block row dimension, the declaration below might cause problems for SME
+                                pred_m = self.generator.pred_n_trues(self.bm - ir * self.v_size, self.v_size, "m")
                             else:
                                 asm.add(mul(regs[ir,ic], self.beta_reg[1], regs[ir,ic], "C = beta * C", pred=pred_m))                    
             else:
                 asm.add(self.generator.make_zero_block(regs, self.additional_regs))
 
-            # TODO: add a if self.is_sme clause for the make_microkernel part where we loop over Bk * Bn? or something else but we
-            # need a seperate loop for the microkernel, because the amount of fmopa instructions to calculate a C block is different 
-            # than in other version where we used fmla
             for Bki in range(0,Bk):
-
-                # TODO: this only works for cases where M = N
-                to_A = Coords(right=Bki) if not self.is_sme else Coords(down=Bki) # Coords(right=Bki, down=Bni)
-                # TODO: line below is probably false, maybe change to absolute=False?
-                to_B = Coords(right=Bni, down=Bki, absolute=True)# if not self.is_sme else Coords(right=Bki, down=Bni, absolute=True)# Coords(right=Bki, absolute=True)
-                # to_B = Coords(right=Bni, down=Bki, absolute=True) #if not self.is_sme else Coords(right=Bni, down=Bki, absolute=False)
+                to_A = Coords(right=Bki) if not self.is_sme else Coords(down=Bki) 
+                to_B = Coords(right=Bni, down=Bki, absolute=True)
 
                 if self.B.has_nonzero_block(B_ptr, to_B):
                     asm.add(self.generator.make_microkernel(self.A, self.B, A_ptr, B_ptr, self.A_regs, self.B_regs, regs, self.v_size, self.additional_regs, to_A, to_B))
@@ -333,7 +293,6 @@ class MatMul:
                         # SME needs to use the alpha_reg here to broadcast beta, this is helpful for the SME version of FMLA
                         store_block.add(bcst(self.beta_bcst_reg, self.beta_reg[1], "Broadcast beta"))
 
-                print("for x in range() with regs.shape[1]={} and self.A_regs.shape[1]={}".format(regs.shape[1], self.A_regs.shape[1]))
                 if self.is_sme:
                     step_size = self.A_regs.shape[0]
                 else:
@@ -344,74 +303,42 @@ class MatMul:
                         A_regs_cut = self.A_regs[0:min(self.A_regs.shape[0], regs.shape[1]), 0:regs.shape[1]-x]
                         B_regs_cut = self.B_regs[0:min(self.B_regs.shape[0], regs.shape[1]), 0:regs.shape[1]-x]
                     if self.beta != 0.0:
-                        # TODO: MAYBE adjust move_register_block such that we move the contents from ZA to A_regs_cut (only if this is the only call to this function that passes a C pointer and A registers)
                         store_block.add(self.generator.move_register_block(self.C, C_ptr, Coords(), A_regs_cut if not self.is_sme else B_regs_cut, self.v_size, self.additional_regs, None, False, None, self.ldc * x))
 
                     for ir in range(A_regs_cut.shape[0]):
                         for ic in range(A_regs_cut.shape[1]):
-                            #TODO: SME might need bk - ir*v_size
                             pred_m = None
                             if self.is_sme:
                                 pred_m = self.generator.pred_n_trues(self.bk - ic*self.v_size, self.v_size, "m")
                             elif self.is_sve:
                                 pred_m = self.generator.pred_n_trues(self.bm - ir*self.v_size, self.v_size, "m")
                             
-                            #TODO: SME doesnt implement FMUL with ZA register as possible source/destination
                             if self.beta != 0.0 and self.beta != 1.0:
                                 if self.is_sme:
                                 # helpful for SME FMLA: beta is in alpha_reg, C is in B_regs_cut
                                     store_block.add(bcst(self.beta_bcst_reg, self.alpha_reg[min(1, ir // 4)], "Broadcast beta"))
-#                                    store_block.add(bcst(self.beta_bcst_reg, self.A_regs[0,0], "Broadcast beta"))
-                                    store_block.add(mul(B_regs_cut[ir,ic], self.alpha_reg[min(1, ir // 4)], B_regs_cut[ir,ic], "beta * C", pred=pred_m)) # was alpha_reg[1] before
+                                    store_block.add(mul(B_regs_cut[ir,ic], self.alpha_reg[min(1, ir // 4)], B_regs_cut[ir,ic], "beta * C", pred=pred_m))
                                 else:
                                     store_block.add(mul(A_regs_cut[ir,ic], self.beta_reg[1], A_regs_cut[ir,ic], "beta * C", pred=pred_m))
                             if self.beta == 0.0:
-                                # TODO: switched indices upcoming regs[ir, x + ic]
-                                # SME case uses beta_reg[1] 
-                                store_block.add(mul(regs[x + ic, ir], self.alpha_reg[1] if not self.is_sme else self.beta_reg[1], A_regs_cut[ir, ic], "C = C + alpha * AB", pred=pred_m))
+                                mul_regs_cut = regs[ir, x + ic] if not self.is_sme else regs[x + ic, ir] 
+                                store_block.add(mul(mul_regs_cut, self.alpha_reg[1] if not self.is_sme else self.beta_reg[1], A_regs_cut[ir, ic], "C = C + alpha * AB", pred=pred_m))
                             else:
-                                #TODO: if we are in arm_sme, we might be able to define the ADD vector as a ZA vector -> needs SME2
                                 if self.is_sme:
-                                    # multiply alpha_reg onto A_regs_cut and add the A_regs_cut to the correct tile slice
-                                    # this should mimic a FMA instruction for now
-                                    # TODO: extend add such that it allows adding to a ZA tile slice
-                                    # mov ZA tile slice to B register
-                                    #b_ir = ir if ir <= self.B_regs.shape[0] else self.B_regs.shape[0]
-                                    # TODO: switched indices for all upcoming regs[ir, x + ic] and B_regs[ic, b_ir] until next print statement
-                                    #store_block.add(mov(regs[x + ic, ir], self.B_regs[b_ir, ic], True, "Move tile slice to vector register", pred=pred_m))
-                                    #store_block.add(mul(self.B_regs[b_ir, ic], self.alpha_reg[1], self.B_regs[b_ir, ic], "alpha * AB", pred=pred_m))
-                                    # switched regs[ir, x + ic] with self.B_regs[]
-                                    #store_block.add(add(A_regs_cut[ir, ic], self.B_regs[b_ir, ic], "C = C + alpha * AB"))
-                                    # mov result from B register back to za tile sclice
-                                    #store_block.add(mov(self.B_regs[b_ir, ic], regs[x + ic, ir], True, "Move vector register to tile slice", pred=pred_m))
-
-                                    print("ir={}, ic={}, x={}".format(ir, ic, x))
                                     store_block.add(mov(regs[ic, x + ir], A_regs_cut[ir, ic], True, "Move AB to vector register", pred=pred_m))
                                     store_block.add(mov(B_regs_cut[ir, ic], regs[ic, x + ir], True, "Move C to matrix register", pred=pred_m))
-                                    if (ir + 1) % 4 == 0: # was ic before
-                                        # pass
-                                        # regs[ir, x+ic-4] because we need to pass the first tile slice of the vector group of ZA
-                                        # in general: we pass the first vector register of the register group so we can construct the necessary group string
-                                        # do we subtract 4 from ic or ir??
-                                        # TODO:QEMU doesnt implement SME2, meaning the FMLA instruction is not available right now
-                                        # uncomment the next two lines when the FMLA instruction is available
-                                        # TODO: regs[ir, x + ic] indexing swapped, we changed order of A (transposed) for SME
+                                    # FMLA uses vector group of size 4 as source vectors
+                                    if (ir + 1) % 4 == 0:
                                         store_block.add(bcst(self.alpha_bcst_reg, self.alpha_reg[min(1, ir // 4)], "Broadcast alpha"))
-                                        # TODO: instead of regs[].base as source, simply use 1,9,17,25 -> how do we determine which one we take?
-                                        # ir=3:1, ir=7:9, ir=11:17, ir=15:25 -> ir//4 * 8 + 1
-                                        # ir=3:1, ir=7:9, ir=11:2, ir=15:10 -> ir//8 + 1 + (ir//4 * 8 % 16)
-                                        # ir=3:1, ir=7:3, ir=11:5, ir=15:7 -> ir//4 * 2 + 1
-#                                        store_block.add(mov(regs[ic, x + ir + 1 - 4].base, self.additional_regs[3], False, "Setup base za register")) # was regs[ic, ir] before
-#                                        store_block.add(mov(ir // 8 + 1 + (ir // 4 * 8 % 16), self.additional_regs[3], False, "Setup base za register")) # was regs[ic, ir] before
-                                        # TODO: this is only valid for double precision, maybe we switch to using ZA[1], ZA[3], ZA[5], ZA{7]
-                                        #  instead of ZA[1], ZA[9], ZA[2], ZA[10]
-                                        store_block.add(mov(ir // 4 * 2 + 1, self.additional_regs[3], False, "Setup base za register")) # was regs[ic, ir] before
-                                        store_block.add(fma(self.alpha_reg[min(1, ir // 4)], A_regs_cut[ir + 1 - 4, ic], regs[ic, x + ir + 1 - 4], "C = C + alpha * AB", False, pred=pred_m)) # was A[ir,ic], regs[ic,ir] before
-                                        # pass
+                                        # this creates valid bases indices for double and single precision, tested on SME512
+                                        # subsequent slices are determined using a stride dependent on vector group size and vector length
+                                        za_base_row_idx = ir // 4 * 2 + 1
+                                        store_block.add(mov(za_base_row_idx, self.additional_regs[3], False, "Setup base za register"))
+                                        store_block.add(fma(self.alpha_reg[min(1, ir // 4)], A_regs_cut[ir + 1 - 4, ic], regs[ic, x + ir + 1 - 4], "C = C + alpha * AB", False, pred=pred_m))
                                 else:
                                     store_block.add(fma(regs[ir, x + ic], self.alpha_reg[1], A_regs_cut[ir, ic], "C = C + alpha * AB", False, pred=pred_m))
-                    if self.is_sme and self.beta != 0.0: # and self.beta != 1.0:
-                        # TODO: add loop that moves the result of  the fma instruction back into the right za0h.d rows
+                    if self.is_sme and self.beta != 0.0:
+                        # move the results of the fma instruction back into the right za0h.{s,d} slices
                         pred_m = self.generator.pred_n_trues(self.bk - ic*self.v_size, self.v_size, "m")
                         for ir in range(A_regs_cut.shape[0]):
                             for ic in range(A_regs_cut.shape[1]):
@@ -425,11 +352,10 @@ class MatMul:
                 asm.add(self.generator.move_register_block(self.C, C_ptr, Coords(), regs, self.v_size, self.additional_regs, None, True, self.prefetching))
 
             if (Bni != Bn-1):
-                # move_coords = Coords(right=1) if not self.is_sme else Coords(down=1)
-                move_C, C_ptr = self.C.move(C_ptr, Coords(right=1)) #if not self.is_sme else self.C.move(C_ptr, Coords(down=1))
+                move_C, C_ptr = self.C.move(C_ptr, Coords(right=1), self.is_sme)
                 asm.add(move_C)
                 if self.C_pf:
-                  move_C_pf, C_pf_ptr = self.C_pf.move(C_pf_ptr, Coords(right=1))
+                  move_C_pf, C_pf_ptr = self.C_pf.move(C_pf_ptr, Coords(right=1), self.is_sme)
                   asm.add(move_C_pf)
 
 
@@ -449,17 +375,17 @@ class MatMul:
 
         if self.n % self.bn != 0:
             Bn += 1
+        # allow defining Bk such that the final block can be shorter than Bk
+#        if self.k % self.bk != 0:
+#            Bk += 1
 
         loopBody = [
           self.make_nk_unroll(),
-        #   *([self.A.move(A_ptr, Coords(down=1))[0]] if not self.is_sme else []),
-          *([self.A.move(A_ptr, Coords(down=1))[0]] if not self.is_sme else [self.A.move(A_ptr, Coords(right=1))[0]]),
-        #   *([self.B.move(CursorLocation(), Coords(down=1), vector=self.generator.is_sparse)[0]] if self.is_sme and Bn > 1 else []),
-          self.C.move(C_ptr, Coords(down=1, right=1-Bn))[0]
-        #   *([self.C.move(C_ptr, Coords(down=1, right=1-Bn))[0]] if not self.is_sme else [self.C.move(C_ptr, Coords(down=1-Bn, right=1))[0]])
+          *([self.A.move(A_ptr, Coords(down=1), self.is_sme)[0]] if not self.is_sme else [self.A.move(A_ptr, Coords(right=1), self.is_sme)[0]]),
+          self.C.move(C_ptr, Coords(down=1, right=1-Bn), self.is_sme)[0]
         ]
         if self.C_pf:
-          loopBody.append(self.C_pf.move(C_pf_ptr, Coords(down=1, right=1-Bn))[0])
+          loopBody.append(self.C_pf.move(C_pf_ptr, Coords(down=1, right=1-Bn), self.is_sme)[0])
 
         asm = block("unrolled_{}x{}x{}".format(self.m,self.n,self.k),
             self.generator.bcst_alpha_beta(self.alpha_reg, self.beta_reg),
