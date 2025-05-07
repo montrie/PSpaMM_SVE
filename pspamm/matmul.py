@@ -260,7 +260,6 @@ class MatMul:
                         asm.add(bcst(self.beta_bcst_reg, self.beta_reg[1], "Broadcast beta"))
                     for ic in range(regs.shape[1]):
                         for ir in range(regs.shape[0]):
-                            pred_m = None 
                             # SME needs a separate pred_m because the row block dimension is bk instead of bm
                             if self.is_sme:
                                 # is there a better way to handle SME not allowing multiplication of ZA rows with vector registers?
@@ -269,10 +268,9 @@ class MatMul:
                                 asm.add(mov(regs[ir,ic], self.A_regs[ic,ir], True, "move ZA row to vector register", pred=pred_m))
                                 asm.add(mul(self.A_regs[ic,ir], self.beta_reg[1], self.A_regs[ic,ir], "C = beta * C", pred=pred_m))
                                 asm.add(mov(self.A_regs[ic,ir], regs[ir,ic], True, "move vector register to ZA row", pred=pred_m))
-                            elif self.is_sve:# and not self.is_sme:
-                                # SME has bk as block row dimension, the declaration below might cause problems for SME
-                                pred_m = self.generator.pred_n_trues(self.bm - ir * self.v_size, self.v_size, "m")
                             else:
+                                # SME has bk as block row dimension, the declaration below might cause problems for SME
+                                pred_m = None if not self.is_sve else self.generator.pred_n_trues(self.bm - ir * self.v_size, self.v_size, "m")
                                 asm.add(mul(regs[ir,ic], self.beta_reg[1], regs[ir,ic], "C = beta * C", pred=pred_m))                    
             else:
                 asm.add(self.generator.make_zero_block(regs, self.additional_regs))

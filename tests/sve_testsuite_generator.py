@@ -149,7 +149,7 @@ def make(kernels, arch):
   {setup_a_trans}
   setup_prefetch({p}prefetch, std::get<3>({p}pointers), {n}, {ldc});
   {name}({A}, std::get<{sparse}>({p}pointers), std::get<3>({p}pointers), {p}alpha, {p}beta, {p}prefetch);
-  result = post<{T}>({m}, {n}, {k}, {lda}, &ldb, {ldc}, &{p}alpha, &{p}beta, std::get<0>({p}pointers), std::get<1>({p}pointers), std::get<3>({p}pointers), std::get<4>({p}pointers), {delta:.7f});
+  result = post<{T}>({m}, {n}, {k}, {lda}, &ldb, {ldc}, &{p}alpha, &{p}beta, std::get<0>({p}pointers), std::get<1>({p}pointers), std::get<3>({p}pointers), std::get<4>({p}pointers), {delta:.7f}, {transpose});
   results.push_back(std::make_tuple("{name}", result));
   free(std::get<0>({p}pointers)); free(std::get<1>({p}pointers)); free(std::get<2>({p}pointers)); free(std::get<3>({p}pointers)); free(std::get<4>({p}pointers)); free({p}prefetch); {free_a_trans}
 """.format(m=kern.m, n=kern.n, k=kern.k, lda=kern.lda, ldb=kern.ldb, ldbsparse=kern.k if sparse else kern.ldb, ldc=kern.ldc, alpha=kern.alpha, beta=kern.beta,

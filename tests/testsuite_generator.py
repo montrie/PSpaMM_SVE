@@ -8,7 +8,7 @@ import os.path
 BASEDIR = 'build'
 
 SparseKernel = namedtuple('SparseKernel', 'name m n k lda ldb ldc alpha beta block_sizes mtx delta')
-enseKernel = namedtuple('DenseKernel', 'name m n k lda ldb ldc alpha beta block_sizes delta')
+DenseKernel = namedtuple('DenseKernel', 'name m n k lda ldb ldc alpha beta block_sizes delta')
 
 head_of_testsuite = """#include <fstream>
 #include <sstream>
@@ -17,9 +17,7 @@ head_of_testsuite = """#include <fstream>
 #include <cmath>
 #include <stdio.h>
 #include <tuple>
-//TODO: DELETE
 #include <iostream>
-
 
 long long pspamm_num_total_flops = 0;
 """
@@ -57,8 +55,9 @@ void transpose_matrix(T* M, T* Mtrans, int rows, int cols) {
 }
 
 template <typename T>
-void gemm_ref(unsigned M, unsigned N, unsigned K, unsigned LDA, unsigned LDB, unsigned LDC, T ALPHA, T BETA, T* A, T* B, T* C) {
-/*
+void gemm_ref(unsigned M, unsigned N, unsigned K, unsigned LDA, unsigned LDB, unsigned LDC, T ALPHA, T BETA, T* A, T* B, T* C, bool transposed = false) {
+
+  if(!transposed) {
   for (unsigned col = 0; col < N; ++col) {
     for (unsigned row = 0; row < M; ++row) {
       C[row + col * LDC] = BETA * C[row + col * LDC];
@@ -71,7 +70,9 @@ void gemm_ref(unsigned M, unsigned N, unsigned K, unsigned LDA, unsigned LDB, un
       }
     }
   }
-*/
+  }
+
+  else{
   for (unsigned row = 0; row < M; ++row) {
     for (unsigned col = 0; col < N; ++col) {
       C[row * LDC + col] = BETA * C[row * LDC + col];
@@ -83,6 +84,7 @@ void gemm_ref(unsigned M, unsigned N, unsigned K, unsigned LDA, unsigned LDB, un
         C[row * LDC + col] += ALPHA * A[row * LDB + k] * B[k * LDC + col];
       }
     }
+  }
   }
 
 }
@@ -160,18 +162,11 @@ std::tuple<T*, T*, T*, T*, T*> pre(unsigned M, unsigned N, unsigned K, unsigned 
 
   f.close();
 
-  //printf("A:\\n");
-  //pretty_print(M, K, LDB, A);
-  //printf("B:\\n");
-  //pretty_print(K, N, LDC, B);
-  //printf("Bsparse:\\n");
-  //pretty_print(K, N, LDC, Bsparse);
-
   return std::make_tuple(A, B, Bsparse, C, Cref);
 }
 
 template <typename T>
-int post(unsigned M, unsigned N, unsigned K, unsigned LDA, unsigned* LDB, unsigned LDC, T* ALPHA, T* BETA, T* A, T* B, T* C, T* Cref, T DELTA) {
+int post(unsigned M, unsigned N, unsigned K, unsigned LDA, unsigned* LDB, unsigned LDC, T* ALPHA, T* BETA, T* A, T* B, T* C, T* Cref, T DELTA, bool transposed = false) {
 
   if(*LDB == 0)
     *LDB = K;
@@ -179,7 +174,7 @@ int post(unsigned M, unsigned N, unsigned K, unsigned LDA, unsigned* LDB, unsign
   //printf("GEMM result:\\n");
   //pretty_print(M, N, LDC, C);
 
-  gemm_ref(M, N, K, LDA, *LDB, LDC, *ALPHA, *BETA, A, B, Cref);
+  gemm_ref(M, N, K, LDA, *LDB, LDC, *ALPHA, *BETA, A, B, Cref, transposed);
 
   //printf("\\nReference:\\n");
   //pretty_print(M, N, LDC, Cref);
@@ -208,6 +203,7 @@ int main()
   // A compiler related issue makes it necessary to store certain values in variables before using them
   unsigned ldb;
   double alpha; double beta;
+  bool transposed = false;
 
 """
 
@@ -215,7 +211,7 @@ setup_single_testcase = """
   ldb = {ldb}; alpha = {alpha}; beta = {beta};
   pointers = pre<double>({m}, {n}, {k}, {lda}, ldb, {ldc}, "{mtx}");
   {name}(std::get<0>(pointers), std::get<{sparse}>(pointers), std::get<3>(pointers), {alpha}, {beta}, nullptr);
-  result = post<double>({m}, {n}, {k}, {lda}, &ldb, {ldc}, &alpha, &beta, std::get<0>(pointers), std::get<1>(pointers), std::get<3>(pointers), std::get<4>(pointers), {delta:.7f});
+  result = post<double>({m}, {n}, {k}, {lda}, &ldb, {ldc}, &alpha, &beta, std::get<0>(pointers), std::get<1>(pointers), std::get<3>(pointers), std::get<4>(pointers), {delta:.7f}, transposed);
   results.push_back(std::make_tuple("{name}", result));
   free(std::get<0>(pointers)); free(std::get<1>(pointers)); free(std::get<2>(pointers)); free(std::get<3>(pointers)); free(std::get<4>(pointers));
 """
@@ -248,7 +244,6 @@ def generateMTX(k, n, nnz):
     os.makedirs(os.path.join(BASEDIR, 'mtx'), exist_ok=True)
 
     filename = os.path.join(BASEDIR, 'mtx', str(k) + 'x' + str(n) + '_' + str(nnz) + '.mtx')
-    print(os.path.abspath(filename))
 
     if os.path.isfile(filename):
         return filename
@@ -303,7 +298,6 @@ def make(kernels, arch):
             additional_args += ['--bm', str(bm), '--bn', str(bn), '--arch', arch]
 
             try:
-                print(' '.join(arguments + additional_args))
                 subprocess.check_output(arguments + additional_args, stderr=subprocess.STDOUT)
             except subprocess.CalledProcessError as e:
                 raise RuntimeError("command '{}' return with error (code {}): {}".format(e.cmd, e.returncode, e.output))
